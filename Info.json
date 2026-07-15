@@ -1,9 +1,9 @@
 {
   "name": "跳过片头片尾",
   "identifier": "com.yanxinle1123.iinaskip",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "ghRepo": "Yanxinle1123/iina-skip",
-  "ghVersion": 1,
+  "ghVersion": 2,
   "author": {
     "name": "Yanxinle1123"
   },
