@@ -330,15 +330,25 @@ async function main() {
   try {
     const allFiles = [opts.main, ...opts.refs];
 
+    // --- auto-detect main file duration if not provided ---
+    let mainDuration = opts.duration;
+    if (!mainDuration) {
+      try {
+        mainDuration = await ffprobeDuration(opts.main, opts.ffmpeg);
+      } catch (e) {
+        // ffprobe failed, skip outro detection
+      }
+    }
+
     // --- compute outro offsets in parallel ---
     let outroOffset = 0;
     const refOutroOffsets = new Map();
-    if (opts.duration) {
-      outroOffset = Math.max(0, opts.duration - ANALYZE_SECONDS);
+    if (mainDuration) {
+      outroOffset = Math.max(0, mainDuration - ANALYZE_SECONDS);
     }
 
     // Parallel ffprobe for all ref files
-    if (opts.duration && outroOffset > 0) {
+    if (mainDuration && outroOffset > 0) {
       const probeResults = await Promise.all(
         opts.refs.map(async (ref) => {
           try {
@@ -367,7 +377,7 @@ async function main() {
     }
 
     // Outro: only if we have duration
-    if (opts.duration && outroOffset > 0) {
+    if (mainDuration && outroOffset > 0) {
       extractionTasks.push({
         key: 'outro:' + opts.main,
         promise: extractFrames(opts.main, outroOffset, ANALYZE_SECONDS, opts.ffmpeg),
@@ -404,7 +414,7 @@ async function main() {
 
     // --- outro matching ---
     let outro = null;
-    if (opts.duration && outroOffset > 0) {
+    if (mainDuration && outroOffset > 0) {
       const mainOutroHashes = featureMap.get('outro:' + opts.main) || [];
       const refOutroHashes = opts.refs.map((r) => ({ file: r, hashes: featureMap.get('outro:' + r) || [] }));
       outro = matchOutro(mainOutroHashes, refOutroHashes, outroOffset);

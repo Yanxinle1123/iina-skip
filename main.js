@@ -111,6 +111,8 @@ const videoMatchDetector = createVideoMatchDetector({
 });
 const detectSectionFromVideoMatch = videoMatchDetector.detectSectionFromVideoMatch;
 const getVideoMatchDependencyStatus = videoMatchDetector.getVideoMatchDependencyStatus;
+const precomputeVideoMatch = videoMatchDetector.precomputeVideoMatch;
+const getAdjacentPlaylistFiles = videoMatchDetector.getAdjacentPlaylistFiles;
 
 function getPosition() {
   const position = mpv.getNumber('time-pos');
@@ -810,6 +812,32 @@ async function detectCurrentSections() {
   }
 
   finishDetection(sections, null, context);
+
+  // Background precompute adjacent files for seamless switching
+  precomputeAdjacentFiles(context.mediaPath, options);
+}
+
+function precomputeAdjacentFiles(currentFile, options) {
+  if (!options || !options.detectVideoMatching || !currentFile) return;
+
+  const adjacent = getAdjacentPlaylistFiles(currentFile);
+  const targets = [adjacent.next, adjacent.previous].filter(Boolean);
+  if (!targets.length) return;
+
+  const precomputeOptions = {
+    parseVideoMatchEpisodeNumbers: options.parseVideoMatchEpisodeNumbers,
+  };
+
+  // Sequential precompute in background (don't block main flow, avoid too many concurrent ffmpeg)
+  (async function () {
+    for (let i = 0; i < targets.length; i++) {
+      try {
+        await precomputeVideoMatch(targets[i], precomputeOptions);
+      } catch (e) {
+        // ignore precompute errors
+      }
+    }
+  })();
 }
 
 function isPlaybackPaused() {

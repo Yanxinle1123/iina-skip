@@ -371,100 +371,182 @@ function createVideoMatchDetector(dependencies) {
     return groups;
   }
 
-  // --- main detection ---
-  async function detectSectionFromVideoMatch(options) {
-    logVideo('读取播放列表前等待 ' + VIDEO_MATCH_PLAYLIST_DELAY_MS + ' 毫秒');
-    await delay(VIDEO_MATCH_PLAYLIST_DELAY_MS);
+  // --- result cache (in-memory, keyed by main file path) ---
+  const resultCache = new Map();
+  const VIDEO_MATCH_CACHE_MAX_ENTRIES = 20;
 
-    const mainFile = getCurrentMediaFile();
+  function getCachedResult(mainFile) {
+    return resultCache.get(mainFile) || null;
+  }
+
+  function setCachedResult(mainFile, groups) {
+    if (resultCache.size >= VIDEO_MATCH_CACHE_MAX_ENTRIES) {
+      // Evict oldest entry (first key)
+      const firstKey = resultCache.keys().next().value;
+      if (firstKey) resultCache.delete(firstKey);
+    }
+    resultCache.set(mainFile, groups);
+  }
+
+  // --- get adjacent playlist files for precomputation ---
+  function getAdjacentPlaylistFiles(currentFile) {
+    const items = getPlaylistItems();
+    const currentIndex = getCurrentPlaylistIndex(items, currentFile);
+    if (currentIndex < 0) return { previous: null, next: null };
+
+    const result = { previous: null, next: null };
+    if (currentIndex > 0) {
+      const prevPath = getPlaylistItemPath(items[currentIndex - 1]);
+      if (isPlayableLocalMedia(prevPath)) result.previous = getLocalFilePath(prevPath);
+    }
+    if (currentIndex + 1 < items.length) {
+      const nextPath = getPlaylistItemPath(items[currentIndex + 1]);
+      if (isPlayableLocalMedia(nextPath)) result.next = getLocalFilePath(nextPath);
+    }
+    return result;
+  }
+
+  // --- core detection (no cache, always runs helper) ---
+  async function runVideoMatchDetection(mainFile, options, isPrecompute) {
     const referenceFiles = getVideoReferenceFiles(mainFile, options);
-
     if (!mainFile || !Array.isArray(referenceFiles) || !referenceFiles.length) {
-      logVideo('已跳过：缺少当前文件或参考文件');
+      if (!isPrecompute) logVideo('已跳过：缺少当前文件或参考文件');
       return null;
     }
 
     const nodePath = await locateBinary('node');
     if (!nodePath) {
-      logVideo('已跳过：未找到 node');
+      if (!isPrecompute) logVideo('已跳过：未找到 node');
       return null;
     }
-    logVideo('使用 node：' + nodePath);
 
     const helperPath = getVideoMatchHelperPath();
     if (!helperPath) {
-      logVideo('已跳过：未找到视频匹配 helper');
+      if (!isPrecompute) logVideo('已跳过：未找到视频匹配 helper');
       return null;
     }
-    logVideo('使用 helper：' + helperPath);
 
     const ffmpegPath = await locateBinary('ffmpeg');
     if (!ffmpegPath) {
-      logVideo('已跳过：未找到 ffmpeg');
+      if (!isPrecompute) logVideo('已跳过：未找到 ffmpeg');
       return null;
     }
-    logVideo('使用 ffmpeg：' + ffmpegPath);
 
     const refs = referenceFiles.slice(0, VIDEO_MATCH_MAX_REFERENCE_FILES);
     const args = [helperPath, '--main', mainFile, '--refs-json', JSON.stringify(refs)];
     if (ffmpegPath) args.push('--ffmpeg', ffmpegPath);
+    // duration is optional; helper will auto-detect via ffprobe if not provided
     if (typeof options.duration === 'number' && isFinite(options.duration) && options.duration > 0) {
       args.push('--duration', String(options.duration));
-    } else {
-      logVideo('未提供有效的视频时长，片尾检测将被跳过（仅检测片头）');
     }
 
-    logVideo('正在运行 helper，共 ' + refs.length + ' 个参考文件');
+    const tag = isPrecompute ? '预计算' : '';
+    if (!isPrecompute) {
+      logVideo('正在运行 helper，共 ' + refs.length + ' 个参考文件');
+    } else {
+      logVideo('预计算：' + mainFile);
+    }
     const result = await iinaUtils.exec(nodePath, args);
     let payload = null;
     try {
       payload = JSON.parse(result.stdout);
     } catch (error) {
-      logVideo('helper 返回了无效的 JSON 标准输出：' + (result.stdout || '(空)'));
-      if (result.stderr) logVideo('helper 标准错误：' + result.stderr);
+      if (!isPrecompute) {
+        logVideo('helper 返回了无效的 JSON 标准输出：' + (result.stdout || '(空)'));
+        if (result.stderr) logVideo('helper 标准错误：' + result.stderr);
+      }
       return null;
     }
 
     if (!payload.ok) {
-      logVideo(
-        'helper 报告未匹配' +
-          (payload.code ? ' [' + payload.code + ']' : '') +
-          '：' + (payload.message || '(无消息)'),
-      );
+      if (!isPrecompute) {
+        logVideo(
+          'helper 报告未匹配' +
+            (payload.code ? ' [' + payload.code + ']' : '') +
+            '：' + (payload.message || '(无消息)'),
+        );
+      }
       return null;
     }
 
     const output = payload.output;
-    if (isValidVideoMatchSection(output.intro)) {
-      logVideo(
-        '匹配器返回的片头区间为 ' +
-          output.intro.start_seconds.toFixed(2) + 's-' +
-          output.intro.end_seconds.toFixed(2) + 's，置信度 ' +
-          (output.confidence
-            ? output.confidence.score + ' (' + output.confidence.label + ')'
-            : '(未知)'),
-      );
-    }
-    if (isValidVideoMatchSection(output.outro)) {
-      logVideo(
-        '匹配器返回的片尾区间为 ' +
-          output.outro.start_seconds.toFixed(2) + 's-' +
-          output.outro.end_seconds.toFixed(2) + 's，置信度 ' +
-          (output.confidence
-            ? output.confidence.score + ' (' + output.confidence.label + ')'
-            : '(未知)'),
-      );
-    }
-    if (!isValidVideoMatchOutput(output)) {
-      logVideo('匹配器返回了无效的片头/片尾结果');
+    if (!isPrecompute) {
+      if (isValidVideoMatchSection(output.intro)) {
+        logVideo(
+          '匹配器返回的片头区间为 ' +
+            output.intro.start_seconds.toFixed(2) + 's-' +
+            output.intro.end_seconds.toFixed(2) + 's，置信度 ' +
+            (output.confidence
+              ? output.confidence.score + ' (' + output.confidence.label + ')'
+              : '(未知)'),
+        );
+      }
+      if (isValidVideoMatchSection(output.outro)) {
+        logVideo(
+          '匹配器返回的片尾区间为 ' +
+            output.outro.start_seconds.toFixed(2) + 's-' +
+            output.outro.end_seconds.toFixed(2) + 's，置信度 ' +
+            (output.confidence
+              ? output.confidence.score + ' (' + output.confidence.label + ')'
+              : '(未知)'),
+        );
+      }
+      if (!isValidVideoMatchOutput(output)) {
+        logVideo('匹配器返回了无效的片头/片尾结果');
+      }
     }
 
     return isValidVideoMatchOutput(output) ? buildVideoMatchSectionGroup(output) : null;
   }
 
+  // --- main detection (with cache) ---
+  async function detectSectionFromVideoMatch(options) {
+    logVideo('读取播放列表前等待 ' + VIDEO_MATCH_PLAYLIST_DELAY_MS + ' 毫秒');
+    await delay(VIDEO_MATCH_PLAYLIST_DELAY_MS);
+
+    const mainFile = getCurrentMediaFile();
+    if (!mainFile) {
+      logVideo('已跳过：缺少当前文件');
+      return null;
+    }
+
+    // Check cache first
+    const cached = getCachedResult(mainFile);
+    if (cached) {
+      logVideo('命中缓存：' + mainFile);
+      return cached;
+    }
+
+    const groups = await runVideoMatchDetection(mainFile, options, false);
+    if (groups) setCachedResult(mainFile, groups);
+    return groups;
+  }
+
+  // --- precompute detection for a specific file (background, no user-facing logs) ---
+  async function precomputeVideoMatch(mainFile, options) {
+    if (!mainFile) return null;
+
+    // Skip if already cached
+    if (getCachedResult(mainFile)) return getCachedResult(mainFile);
+
+    try {
+      const groups = await runVideoMatchDetection(mainFile, options, true);
+      if (groups) {
+        setCachedResult(mainFile, groups);
+        logVideo('预计算完成并已缓存：' + mainFile);
+      }
+      return groups;
+    } catch (error) {
+      logVideo('预计算失败：' + mainFile + ' - ' + error);
+      return null;
+    }
+  }
+
   return {
     detectSectionFromVideoMatch: detectSectionFromVideoMatch,
     getVideoMatchDependencyStatus: getVideoMatchDependencyStatus,
+    precomputeVideoMatch: precomputeVideoMatch,
+    getAdjacentPlaylistFiles: getAdjacentPlaylistFiles,
   };
 }
 
