@@ -2797,23 +2797,18 @@ async function findIntroMatch({ mainFile, refFiles, options = {}, runCommand, du
       resolved.maxIntro
     );
     reportProgress(onProgress, "正在对片尾做后处理");
-    const rawOutro = await postProcessIntroFromSharedAudio2(
-      outroPipeline.sharedAudio,
-      outroMainEpisode,
-      outroPipeline.pairwiseRuns,
-      outroPipeline.minLen,
-      outroPipeline.maxLen,
-      mainFile,
-      runCommand
-    );
-    if (rawOutro) {
+    const outroShared = outroPipeline.sharedAudio;
+    if (outroShared) {
+      // 复用与片头相同的匹配流水线，并采用流水线内已做的通用边界细化结果。
+      // 不再套用片头专属的“起始溢色/前置静音”裁剪逻辑，因为那些假设音频位于片段开头。
+      const rawOutro = formatFrameRange(outroShared.mainStart, outroShared.mainEnd);
       const offset = outroStartSeconds;
       outro = {
-        mainStart: rawOutro.mainStart,
-        mainEnd: rawOutro.mainEnd,
-        startSeconds: round4(rawOutro.startSeconds + offset),
-        endSeconds: round4(rawOutro.endSeconds + offset),
-        durationSeconds: rawOutro.durationSeconds
+        mainStart: outroShared.mainStart,
+        mainEnd: outroShared.mainEnd,
+        startSeconds: round4(rawOutro.start_seconds + offset),
+        endSeconds: round4(rawOutro.end_seconds + offset),
+        durationSeconds: rawOutro.duration_seconds
       };
     }
   }
@@ -2823,7 +2818,11 @@ async function findIntroMatch({ mainFile, refFiles, options = {}, runCommand, du
     outro
   };
   const output = formatOutput(mainFile, refFiles, result, resolved.minConfidence);
-  if (!output.accepted) {
+  const hasValidIntro =
+    result.intro && typeof result.intro.start_seconds === "number" && isFinite(result.intro.start_seconds);
+  const hasValidOutro =
+    result.outro && typeof result.outro.start_seconds === "number" && isFinite(result.outro.start_seconds);
+  if (!output.accepted && !hasValidIntro && !hasValidOutro) {
     throw new IntroMatchError("LOW_CONFIDENCE_MATCH", output.rejected_reason, {
       output,
       result

@@ -540,6 +540,8 @@ function createAudioMatchDetector(dependencies) {
     }
     if (typeof options.duration === 'number' && isFinite(options.duration) && options.duration > 0) {
       args.push('--duration', String(options.duration));
+    } else {
+      logAudio('未提供有效的视频时长，片尾检测将被跳过（仅检测片头）');
     }
 
     logAudio('正在运行 helper，共 ' + refs.length + ' 个参考文件');
