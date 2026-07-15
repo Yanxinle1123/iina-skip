@@ -1,13 +1,13 @@
 {
-  "name": "跳过片头",
-  "identifier": "com.pparanoiidd.skipintro",
+  "name": "跳过片头片尾",
+  "identifier": "com.yanxinle1123.iinaskip",
   "version": "1.0.0",
-  "ghRepo": "pparanoiidd/iina-skip-intro",
+  "ghRepo": "Yanxinle1123/iina-skip",
   "ghVersion": 1,
   "author": {
-    "name": "pparanoiidd"
+    "name": "Yanxinle1123"
   },
-  "description": "IINA 的跳过片头叠加层插件。",
+  "description": "IINA 的跳过片头片尾叠加层插件。",
   "entry": "main.js",
   "preferencesPage": "preferences.html",
   "preferenceDefaults": {
@@ -22,6 +22,7 @@
     "auto_skip_title_recaps": false,
     "auto_skip_title_credits": false,
     "auto_skip_audio_matching": false,
+    "auto_skip_audio_matching_credits": false,
     "auto_skip_start_delay_seconds": 0,
     "show_auto_skip_status": true,
     "auto_skip_first_episode_of_season": true,

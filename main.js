@@ -52,6 +52,7 @@ const PREF_AUTO_SKIP_TITLE_INTROS = 'auto_skip_title_intros';
 const PREF_AUTO_SKIP_TITLE_RECAPS = 'auto_skip_title_recaps';
 const PREF_AUTO_SKIP_TITLE_CREDITS = 'auto_skip_title_credits';
 const PREF_AUTO_SKIP_AUDIO_MATCHING = 'auto_skip_audio_matching';
+const PREF_AUTO_SKIP_AUDIO_MATCHING_CREDITS = 'auto_skip_audio_matching_credits';
 const PREF_AUTO_SKIP_START_DELAY_SECONDS = 'auto_skip_start_delay_seconds';
 const PREF_SHOW_AUTO_SKIP_STATUS = 'show_auto_skip_status';
 const PREF_AUTO_SKIP_FIRST_EPISODE_OF_SEASON = 'auto_skip_first_episode_of_season';
@@ -221,6 +222,10 @@ function isAudioMatchingAutoSkipEnabled() {
   return getBooleanPreference(PREF_AUTO_SKIP_AUDIO_MATCHING, false);
 }
 
+function isAudioMatchingCreditsAutoSkipEnabled() {
+  return getBooleanPreference(PREF_AUTO_SKIP_AUDIO_MATCHING_CREDITS, false);
+}
+
 function getDetectionOptionsFromPreferences() {
   return {
     detectChapterTitles: isChapterTitleDetectionEnabled(),
@@ -382,6 +387,7 @@ function getAutoSkipSettingsFromPreferences() {
     titleRecaps: isTitleRecapAutoSkipEnabled(),
     titleCredits: isTitleCreditsAutoSkipEnabled(),
     audioMatching: isAudioMatchingAutoSkipEnabled(),
+    audioMatchingCredits: isAudioMatchingCreditsAutoSkipEnabled(),
     startDelaySeconds: getAutoSkipStartDelaySeconds(),
     showStatus: shouldShowAutoSkipStatus(),
     autoSkipFirstEpisodeOfSeason: shouldAutoSkipFirstEpisodeOfSeason(),
@@ -402,7 +408,11 @@ function resolveAutoSkipForSection(sectionGroup, settings) {
   for (let i = 0; i < sectionGroup.sections.length; i++) {
     const section = sectionGroup.sections[i];
     if (section.source === SECTION_SOURCE_AUDIO_FINGERPRINT) {
-      if (settings.audioMatching) return true;
+      if (section.kind === SECTION_KIND_CREDITS) {
+        if (settings.audioMatchingCredits) return true;
+      } else {
+        if (settings.audioMatching) return true;
+      }
       continue;
     }
     if (

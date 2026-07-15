@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>跳过片头偏好设置</title>
+    <title>跳过片头片尾偏好设置</title>
     <style>
       body {
         user-select: none;
@@ -216,11 +216,11 @@
   </head>
   <body>
     <div class="pref-section">
-      <div class="preference-heading">片头检测方式</div>
+      <div class="preference-heading">检测方式</div>
       <p class="small secondary pref-help">
         已启用的方式将按此顺序运行，命中第一个匹配后即停止。
       </p>
-      <div class="detection-sections" aria-label="片头检测方式">
+      <div class="detection-sections" aria-label="检测方式">
         <section class="detection-section">
           <label class="detection-section__title">
             <input type="checkbox" data-pref-key="detect_chapter_titles" data-type="bool" />
@@ -430,6 +430,40 @@
                 <label for="audio-matching-auto">自动跳过</label>
               </div>
             </div>
+            <div
+              class="detection-option"
+              data-behavior-control
+              data-auto-pref-key="auto_skip_audio_matching_credits"
+            >
+              <input
+                class="hidden-preference-input"
+                tabindex="-1"
+                type="checkbox"
+                data-pref-key="auto_skip_audio_matching_credits"
+                data-type="bool"
+              />
+              <span class="detection-option__label">片尾：</span>
+              <div
+                class="toggle-control segmented-toggle"
+                role="radiogroup"
+                aria-label="音频指纹片尾行为"
+              >
+                <input
+                  type="radio"
+                  id="audio-matching-credits-prompt"
+                  name="audio_matching_credits_behavior"
+                  value="prompt"
+                />
+                <label for="audio-matching-credits-prompt">提示</label>
+                <input
+                  type="radio"
+                  id="audio-matching-credits-auto"
+                  name="audio_matching_credits_behavior"
+                  value="auto"
+                />
+                <label for="audio-matching-credits-auto">自动跳过</label>
+              </div>
+            </div>
             <div class="detection-option">
               <label class="detection-option detection-option--stacked">
                 <input
@@ -568,6 +602,7 @@
         auto_skip_title_recaps: false,
         auto_skip_title_credits: false,
         auto_skip_audio_matching: false,
+        auto_skip_audio_matching_credits: false,
         auto_skip_start_delay_seconds: 0,
         show_auto_skip_status: true,
         auto_skip_first_episode_of_season: true,

@@ -11,8 +11,8 @@ const {
 const AUDIO_MATCH_PLAYLIST_DELAY_MS = 500; // Delay to allow playlist properties to update
 const AUDIO_MATCH_MAX_REFERENCE_FILES = 4;
 const AUDIO_MATCH_HELPER_PATH = './vendor/audio-intro-match/iina-helper.mjs';
-const PLUGIN_PACKAGE_NAME = 'com.pparanoiidd.skipintro.iinaplugin';
-const PLUGIN_DEV_PACKAGE_NAME = 'com.pparanoiidd.skipintro.iinaplugin-dev';
+const PLUGIN_PACKAGE_NAME = 'com.yanxinle1123.iinaskip.iinaplugin';
+const PLUGIN_DEV_PACKAGE_NAME = 'com.yanxinle1123.iinaskip.iinaplugin-dev';
 const BAD_REFERENCE_FILENAME_REGEX =
   /(?:^|[\s._\-[\(])(?:sample|trailer|extras?|ncop\d*|nced\d*|oped|creditless|preview)(?:$|[\s._\-\]\)])/i;
 const BINARY_CANDIDATES = Object.freeze({

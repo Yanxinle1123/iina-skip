@@ -1,7 +1,7 @@
-<h1 align="center">IINA 跳过片头插件</h1>
+<h1 align="center">IINA 跳过片头片尾插件</h1>
 
 <p align="center">
-Skip Intro 为 <a href="https://iina.io/">IINA</a>（macOS 上的现代媒体播放器）增加了跳过片头、回顾和片尾字幕的功能。
+跳过片头片尾 为 <a href="https://iina.io/">IINA</a>（macOS 上的现代媒体播放器）增加了跳过片头、回顾和片尾字幕的功能。
 </p>
 
 <p align="center">
@@ -35,10 +35,10 @@ Skip Intro 为 <a href="https://iina.io/">IINA</a>（macOS 上的现代媒体播
 
 1. 安装并打开 [IINA](https://iina.io/)，然后从菜单栏进入 `设置 -> 插件`。
 2. 选择 `从 GitHub 安装...`。
-3. 粘贴 `pparanoiidd/iina-skip-intro` 并安装。
+3. 粘贴 `Yanxinle1123/iina-skip` 并安装。
    > **注意：** 关于插件申请各项权限的原因，请参见 [权限说明](#权限说明)。
 4. 重启 IINA。
-5. 打开 `设置 -> 插件 -> 跳过片头 -> 偏好设置`，选择检测方式与跳过行为。
+5. 打开 `设置 -> 插件 -> 跳过片头片尾 -> 偏好设置`，选择检测方式与跳过行为。
 
 ### 可选：启用音频指纹匹配
 
@@ -110,7 +110,7 @@ brew install node ffmpeg
 3. 启用 `日志` 并重启 IINA。
 4. 播放出现问题的视频，让插件运行并写入日志条目。
 5. 使用 `Ctrl + Cmd + L` 打开日志。
-6. 将 `子系统` 设置为 `跳过片头`。
+6. 将 `子系统` 设置为 `跳过片头片尾`。
 
 值得关注的内容：
 
