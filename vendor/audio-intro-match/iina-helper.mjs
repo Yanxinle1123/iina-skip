@@ -2324,7 +2324,7 @@ async function ensureToolAvailable(tool, runCommand) {
     });
   }
 }
-async function extractPcmMono16le(path, seconds, sampleRate, runCommand) {
+async function extractPcmMono16le(path, seconds, sampleRate, runCommand, startSeconds) {
   let result;
   try {
     const args = [
@@ -2334,10 +2334,12 @@ async function extractPcmMono16le(path, seconds, sampleRate, runCommand) {
       "-i",
       path,
       "-map",
-      "0:a:0",
-      "-t",
-      String(seconds)
+      "0:a:0"
     ];
+    if (typeof startSeconds === "number" && isFinite(startSeconds) && startSeconds > 0) {
+      args.push("-ss", String(startSeconds));
+    }
+    args.push("-t", String(seconds));
     args.push("-ac", "1", "-ar", String(sampleRate), "-vn", "-sn", "-dn", "-f", "s16le", "pipe:1");
     result = await runCommand({
       command: "ffmpeg",
@@ -2407,7 +2409,7 @@ function finalizeEpisodeFeatures({ path, frames, boundaryMel, rmsDb, volumeVaria
     }
   };
 }
-async function getCacheIdentity(path, analyzeSeconds, sampleRate) {
+async function getCacheIdentity(path, analyzeSeconds, sampleRate, startSeconds) {
   const canonicalPath = await realpath(path).catch(() => resolve(path));
   const fileStat = await stat(canonicalPath);
   const identity = {
@@ -2417,6 +2419,7 @@ async function getCacheIdentity(path, analyzeSeconds, sampleRate) {
     size: fileStat.size,
     mtimeMs: fileStat.mtimeMs,
     analyzeSeconds,
+    startSeconds: typeof startSeconds === "number" && isFinite(startSeconds) ? startSeconds : 0,
     sampleRate,
     frameWindowSeconds: FRAME_WINDOW_SECONDS2,
     frameHopSeconds: FRAME_HOP_SECONDS2,
@@ -2541,8 +2544,8 @@ async function pruneFeatureCache(cacheDir, maxBytes) {
     }
   }
 }
-async function buildEpisodeFeaturesUncached(path, analyzeSeconds, sampleRate, runCommand) {
-  const pcm = await extractPcmMono16le(path, analyzeSeconds, sampleRate, runCommand);
+async function buildEpisodeFeaturesUncached(path, analyzeSeconds, sampleRate, runCommand, startSeconds) {
+  const pcm = await extractPcmMono16le(path, analyzeSeconds, sampleRate, runCommand, startSeconds);
   const frameSize = Math.trunc(sampleRate * FRAME_WINDOW_SECONDS2);
   const hopSize = Math.trunc(sampleRate * FRAME_HOP_SECONDS2);
   if (frameSize <= 0 || hopSize <= 0) {
@@ -2581,24 +2584,24 @@ async function buildEpisodeFeaturesUncached(path, analyzeSeconds, sampleRate, ru
     volumeVariance: variance / rmsDb.length
   });
 }
-async function buildEpisodeFeatures(path, analyzeSeconds, sampleRate, runCommand, featureCache) {
+async function buildEpisodeFeatures(path, analyzeSeconds, sampleRate, runCommand, featureCache, startSeconds) {
   if (!featureCache?.dir) {
-    return buildEpisodeFeaturesUncached(path, analyzeSeconds, sampleRate, runCommand);
+    return buildEpisodeFeaturesUncached(path, analyzeSeconds, sampleRate, runCommand, startSeconds);
   }
-  const { identity, key } = await getCacheIdentity(path, analyzeSeconds, sampleRate);
+  const { identity, key } = await getCacheIdentity(path, analyzeSeconds, sampleRate, startSeconds);
   const cached = await readEpisodeFeaturesFromCache(path, featureCache.dir, identity, key);
   if (cached) {
     return cached;
   }
-  const episode = await buildEpisodeFeaturesUncached(path, analyzeSeconds, sampleRate, runCommand);
+  const episode = await buildEpisodeFeaturesUncached(path, analyzeSeconds, sampleRate, runCommand, startSeconds);
   await writeEpisodeFeaturesToCache(featureCache.dir, key, episode, identity);
   return episode;
 }
-async function buildEpisodeSetFeatures(mainFile, refFiles, analyzeSeconds, sampleRate, runCommand, featureCache) {
+async function buildEpisodeSetFeatures(mainFile, refFiles, analyzeSeconds, sampleRate, runCommand, featureCache, startSeconds) {
   const [mainEpisode, ...refEpisodes] = await Promise.all([
-    buildEpisodeFeatures(mainFile, analyzeSeconds, sampleRate, runCommand, featureCache),
+    buildEpisodeFeatures(mainFile, analyzeSeconds, sampleRate, runCommand, featureCache, startSeconds),
     ...refFiles.map(
-      (refFile) => buildEpisodeFeatures(refFile, analyzeSeconds, sampleRate, runCommand, featureCache)
+      (refFile) => buildEpisodeFeatures(refFile, analyzeSeconds, sampleRate, runCommand, featureCache, startSeconds)
     )
   ]);
   await pruneFeatureCache(featureCache?.dir, featureCache?.maxBytes);
@@ -2677,11 +2680,13 @@ function formatOutput(mainFile, refFiles, result, minConfidence) {
     result.sharedAudio.mainEnd
   );
   const introRange = result.intro;
+  const outroRange = result.outro;
   const output = {
     main_file: mainFile,
     ...sharedAudioRange,
     shared_audio: sharedAudioRange,
     intro: introRange,
+    outro: outroRange,
     accepted: result.sharedAudio.confidenceScore >= minConfidence,
     scores: {
       total: round4(result.sharedAudio.totalScore),
@@ -2714,7 +2719,7 @@ function formatOutput(mainFile, refFiles, result, minConfidence) {
   }
   return output;
 }
-async function findIntroMatch({ mainFile, refFiles, options = {}, runCommand }) {
+async function findIntroMatch({ mainFile, refFiles, options = {}, runCommand, durationSeconds }) {
   if (typeof runCommand !== "function") {
     throw new IntroMatchError("RUN_COMMAND_REQUIRED", "需要一个 runCommand 函数。");
   }
@@ -2733,6 +2738,8 @@ async function findIntroMatch({ mainFile, refFiles, options = {}, runCommand }) 
     ...options
   };
   const { onProgress } = resolved;
+  const hasValidDuration =
+    typeof durationSeconds === "number" && isFinite(durationSeconds) && durationSeconds > resolved.analyzeSeconds;
   reportProgress(onProgress, "正在检查工具");
   await ensureToolAvailable("ffmpeg", runCommand);
   reportProgress(onProgress, "正在提取特征");
@@ -2740,14 +2747,29 @@ async function findIntroMatch({ mainFile, refFiles, options = {}, runCommand }) 
     dir: resolved.featureCacheDir,
     maxBytes: resolved.featureCacheMaxBytes
   } : null;
+  const outroStartSeconds = hasValidDuration
+    ? Math.max(0, durationSeconds - resolved.analyzeSeconds)
+    : 0;
   const { mainEpisode, refEpisodes } = await buildEpisodeSetFeatures(
     mainFile,
     refFiles,
     resolved.analyzeSeconds,
     resolved.sampleRate,
     runCommand,
-    featureCache
+    featureCache,
+    0
   );
+  const { outroMainEpisode, outroRefEpisodes } = hasValidDuration
+    ? await buildEpisodeSetFeatures(
+        mainFile,
+        refFiles,
+        resolved.analyzeSeconds,
+        resolved.sampleRate,
+        runCommand,
+        featureCache,
+        outroStartSeconds
+      )
+    : { outroMainEpisode: null, outroRefEpisodes: [] };
   reportProgress(onProgress, "正在匹配");
   const pipeline = runMatchingPipeline(
     mainEpisode,
@@ -2765,9 +2787,40 @@ async function findIntroMatch({ mainFile, refFiles, options = {}, runCommand }) 
     mainFile,
     runCommand
   );
+  let outro = null;
+  if (hasValidDuration && outroMainEpisode) {
+    reportProgress(onProgress, "正在匹配片尾");
+    const outroPipeline = runMatchingPipeline(
+      outroMainEpisode,
+      outroRefEpisodes,
+      resolved.minIntro,
+      resolved.maxIntro
+    );
+    reportProgress(onProgress, "正在对片尾做后处理");
+    const rawOutro = await postProcessIntroFromSharedAudio2(
+      outroPipeline.sharedAudio,
+      outroMainEpisode,
+      outroPipeline.pairwiseRuns,
+      outroPipeline.minLen,
+      outroPipeline.maxLen,
+      mainFile,
+      runCommand
+    );
+    if (rawOutro) {
+      const offset = outroStartSeconds;
+      outro = {
+        mainStart: rawOutro.mainStart,
+        mainEnd: rawOutro.mainEnd,
+        startSeconds: round4(rawOutro.startSeconds + offset),
+        endSeconds: round4(rawOutro.endSeconds + offset),
+        durationSeconds: rawOutro.durationSeconds
+      };
+    }
+  }
   const result = {
     sharedAudio: pipeline.sharedAudio,
-    intro
+    intro,
+    outro
   };
   const output = formatOutput(mainFile, refFiles, result, resolved.minConfidence);
   if (!output.accepted) {
@@ -2836,6 +2889,7 @@ function parseArgs(argv) {
   let refFiles = [];
   let ffmpegPath = null;
   let cacheDir = null;
+  let parsedDuration = null;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const optionParser = OPTION_PARSERS[arg];
@@ -2875,6 +2929,14 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === "--duration") {
+      const durationValue = parseFloatValue(arg, readOptionValue(argv, index, arg));
+      index += 1;
+      if (Number.isFinite(durationValue) && durationValue > 0) {
+        parsedDuration = durationValue;
+      }
+      continue;
+    }
     throw new IntroMatchError("INVALID_ARGUMENT", `未知参数：${arg}`, { arg });
   }
   if (!mainFile || !Array.isArray(refFiles) || refFiles.length < 1 || refFiles.length > MAX_REFERENCE_FILES) {
@@ -2887,6 +2949,7 @@ function parseArgs(argv) {
   return {
     mainFile,
     refFiles,
+    durationSeconds: parsedDuration,
     options: {
       ...options,
       ...cacheDir ? { featureCacheDir: cacheDir } : {}
@@ -2944,6 +3007,7 @@ function compactOutput(output) {
   return {
     accepted: output.accepted,
     intro: output.intro,
+    outro: output.outro,
     shared_audio: output.shared_audio,
     confidence: output.confidence,
     scores: output.scores,
@@ -2979,7 +3043,8 @@ async function main() {
       mainFile: parsed.mainFile,
       refFiles: parsed.refFiles,
       options: parsed.options,
-      runCommand: createRunCommand(parsed.commandPaths)
+      runCommand: createRunCommand(parsed.commandPaths),
+      durationSeconds: parsed.durationSeconds
     });
     printJson({
       ok: true,

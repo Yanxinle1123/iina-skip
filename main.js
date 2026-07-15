@@ -586,12 +586,19 @@ async function detectFromAudioMatch(context, options, runId) {
       return [];
     }
 
-    const audioSectionGroup = await detectSectionFromAudioMatch(options);
+    const audioOptions = Object.assign({}, options, {
+      duration: context && context.duration,
+    });
+    const audioSectionGroups = await detectSectionFromAudioMatch(audioOptions);
     if (runId !== detectionRunId) return null;
 
-    return audioSectionGroup
-      ? [snapAudioSectionGroupToChapters(audioSectionGroup, context.chapters)]
-      : [];
+    if (!Array.isArray(audioSectionGroups) || !audioSectionGroups.length) {
+      return [];
+    }
+
+    return audioSectionGroups.map(function (audioSectionGroup) {
+      return snapAudioSectionGroupToChapters(audioSectionGroup, context.chapters);
+    });
   } catch (error) {
     if (runId !== detectionRunId) return null;
     log('音频片头检测失败：' + error);

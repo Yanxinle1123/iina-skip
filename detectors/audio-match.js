@@ -423,11 +423,11 @@ function createAudioMatchDetector(dependencies) {
     return referenceFiles;
   }
 
-  function isValidAudioMatchOutput(output) {
-    if (!output || !output.intro) return false;
+  function isValidAudioMatchSection(section) {
+    if (!section || typeof section.start_seconds !== 'number') return false;
 
-    const start = output.intro.start_seconds;
-    const end = output.intro.end_seconds;
+    const start = section.start_seconds;
+    const end = section.end_seconds;
     return (
       typeof start === 'number' &&
       isFinite(start) &&
@@ -438,27 +438,62 @@ function createAudioMatchDetector(dependencies) {
     );
   }
 
-  function buildAudioMatchSectionGroup(output) {
-    const start = output.intro.start_seconds;
-    const end = output.intro.end_seconds;
-    const id = 'audio-intro-' + Math.round(start * 1000) + '-' + Math.round(end * 1000);
+  function isValidAudioMatchOutput(output) {
+    if (!output) return false;
 
-    return {
-      id: id,
-      start: start,
-      end: end,
-      sections: [
-        {
-          start: start,
-          end: end,
-          titles: ['音频指纹片头'],
-          source: SECTION_SOURCE_AUDIO_FINGERPRINT,
-          kind: SECTION_KIND_INTRO,
-          confidence: output.confidence || null,
-          sharedAudio: output.shared_audio || null,
-        },
-      ],
-    };
+    return isValidAudioMatchSection(output.intro) || isValidAudioMatchSection(output.outro);
+  }
+
+  function buildAudioMatchSectionGroup(output) {
+    const groups = [];
+
+    if (output.intro && typeof output.intro.start_seconds === 'number') {
+      const start = output.intro.start_seconds;
+      const end = output.intro.end_seconds;
+      const id = 'audio-intro-' + Math.round(start * 1000) + '-' + Math.round(end * 1000);
+
+      groups.push({
+        id: id,
+        start: start,
+        end: end,
+        sections: [
+          {
+            start: start,
+            end: end,
+            titles: ['音频指纹片头'],
+            source: SECTION_SOURCE_AUDIO_FINGERPRINT,
+            kind: SECTION_KIND_INTRO,
+            confidence: output.confidence || null,
+            sharedAudio: output.shared_audio || null,
+          },
+        ],
+      });
+    }
+
+    if (output.outro && typeof output.outro.start_seconds === 'number') {
+      const start = output.outro.start_seconds;
+      const end = output.outro.end_seconds;
+      const id = 'audio-outro-' + Math.round(start * 1000) + '-' + Math.round(end * 1000);
+
+      groups.push({
+        id: id,
+        start: start,
+        end: end,
+        sections: [
+          {
+            start: start,
+            end: end,
+            titles: ['音频指纹片尾'],
+            source: SECTION_SOURCE_AUDIO_FINGERPRINT,
+            kind: SECTION_KIND_CREDITS,
+            confidence: output.confidence || null,
+            sharedAudio: output.shared_audio || null,
+          },
+        ],
+      });
+    }
+
+    return groups;
   }
 
   async function detectSectionFromAudioMatch(options) {
@@ -503,6 +538,9 @@ function createAudioMatchDetector(dependencies) {
     if (cacheDir) {
       args.push('--cache-dir', cacheDir);
     }
+    if (typeof options.duration === 'number' && isFinite(options.duration) && options.duration > 0) {
+      args.push('--duration', String(options.duration));
+    }
 
     logAudio('正在运行 helper，共 ' + refs.length + ' 个参考文件');
     const result = await iinaUtils.exec(nodePath, args);
@@ -526,7 +564,7 @@ function createAudioMatchDetector(dependencies) {
     }
 
     const output = payload.output;
-    if (isValidAudioMatchOutput(output)) {
+    if (isValidAudioMatchSection(output.intro)) {
       logAudio(
         '匹配器返回的片头区间为 ' +
           output.intro.start_seconds.toFixed(2) +
@@ -537,8 +575,21 @@ function createAudioMatchDetector(dependencies) {
             ? output.confidence.score + ' (' + output.confidence.label + ')'
             : '(未知)'),
       );
-    } else {
-      logAudio('匹配器返回了无效的片头结果');
+    }
+    if (isValidAudioMatchSection(output.outro)) {
+      logAudio(
+        '匹配器返回的片尾区间为 ' +
+          output.outro.start_seconds.toFixed(2) +
+          's-' +
+          output.outro.end_seconds.toFixed(2) +
+          's，置信度 ' +
+          (output.confidence
+            ? output.confidence.score + ' (' + output.confidence.label + ')'
+            : '(未知)'),
+      );
+    }
+    if (!isValidAudioMatchOutput(output)) {
+      logAudio('匹配器返回了无效的片头/片尾结果');
     }
 
     return isValidAudioMatchOutput(output) ? buildAudioMatchSectionGroup(output) : null;
