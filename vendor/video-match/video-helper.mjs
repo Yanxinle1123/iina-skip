@@ -330,61 +330,83 @@ async function main() {
   try {
     const allFiles = [opts.main, ...opts.refs];
 
-    // --- intro: extract frames from the beginning of each file ---
-    const introFeatureMap = new Map();
-    for (const file of allFiles) {
-      try {
-        const raw = await extractFrames(file, 0, ANALYZE_SECONDS, opts.ffmpeg);
-        introFeatureMap.set(file, extractFrameHashes(raw));
-      } catch (e) {
-        // Skip files that fail extraction
-        introFeatureMap.set(file, []);
-      }
-    }
-
-    const mainIntroHashes = introFeatureMap.get(opts.main) || [];
-    const refIntroHashes = opts.refs.map((r) => ({ file: r, hashes: introFeatureMap.get(r) || [] }));
-
-    const intro = matchIntro(mainIntroHashes, refIntroHashes);
-
-    // --- outro: extract frames from the end of each file ---
-    let outro = null;
+    // --- compute outro offsets in parallel ---
     let outroOffset = 0;
+    const refOutroOffsets = new Map();
     if (opts.duration) {
       outroOffset = Math.max(0, opts.duration - ANALYZE_SECONDS);
     }
 
+    // Parallel ffprobe for all ref files
     if (opts.duration && outroOffset > 0) {
-      // Get actual durations of ref files using ffprobe
-      const outroFeatureMap = new Map();
-
-      // Main file outro
-      try {
-        const mainOutroRaw = await extractFrames(opts.main, outroOffset, ANALYZE_SECONDS, opts.ffmpeg);
-        outroFeatureMap.set(opts.main, extractFrameHashes(mainOutroRaw));
-      } catch {
-        outroFeatureMap.set(opts.main, []);
-      }
-
-      // Ref files outro
-      for (const refFile of opts.refs) {
-        try {
-          const refDuration = await ffprobeDuration(refFile, opts.ffmpeg);
-          const refOutroOffset = Math.max(0, refDuration - ANALYZE_SECONDS);
-          if (refOutroOffset > 0) {
-            const raw = await extractFrames(refFile, refOutroOffset, ANALYZE_SECONDS, opts.ffmpeg);
-            outroFeatureMap.set(refFile, extractFrameHashes(raw));
-          } else {
-            outroFeatureMap.set(refFile, []);
+      const probeResults = await Promise.all(
+        opts.refs.map(async (ref) => {
+          try {
+            const d = await ffprobeDuration(ref, opts.ffmpeg);
+            return { ref, offset: Math.max(0, d - ANALYZE_SECONDS) };
+          } catch {
+            return { ref, offset: 0 };
           }
-        } catch {
-          outroFeatureMap.set(refFile, []);
-        }
+        })
+      );
+      for (const { ref, offset } of probeResults) {
+        refOutroOffsets.set(ref, offset);
       }
+    }
 
-      const mainOutroHashes = outroFeatureMap.get(opts.main) || [];
-      const refOutroHashes = opts.refs.map((r) => ({ file: r, hashes: outroFeatureMap.get(r) || [] }));
+    // --- launch ALL frame extractions in parallel ---
+    // Each entry: { key, file, start, isOutro }
+    const extractionTasks = [];
 
+    // Intro: all files from start
+    for (const file of allFiles) {
+      extractionTasks.push({
+        key: 'intro:' + file,
+        promise: extractFrames(file, 0, ANALYZE_SECONDS, opts.ffmpeg),
+      });
+    }
+
+    // Outro: only if we have duration
+    if (opts.duration && outroOffset > 0) {
+      extractionTasks.push({
+        key: 'outro:' + opts.main,
+        promise: extractFrames(opts.main, outroOffset, ANALYZE_SECONDS, opts.ffmpeg),
+      });
+      for (const ref of opts.refs) {
+        const refOff = refOutroOffsets.get(ref) || 0;
+        extractionTasks.push({
+          key: 'outro:' + ref,
+          promise: refOff > 0
+            ? extractFrames(ref, refOff, ANALYZE_SECONDS, opts.ffmpeg)
+            : Promise.resolve(Buffer.alloc(0)),
+        });
+      }
+    }
+
+    // Run all extractions concurrently
+    const taskKeys = extractionTasks.map((t) => t.key);
+    const taskPromises = extractionTasks.map((t) =>
+      t.promise.then((buf) => ({ key: t.key, hashes: extractFrameHashes(buf) }))
+        .catch(() => ({ key: t.key, hashes: [] }))
+    );
+    const results = await Promise.all(taskPromises);
+
+    // Build feature maps
+    const featureMap = new Map();
+    for (let i = 0; i < results.length; i++) {
+      featureMap.set(results[i].key, results[i].hashes);
+    }
+
+    // --- intro matching ---
+    const mainIntroHashes = featureMap.get('intro:' + opts.main) || [];
+    const refIntroHashes = opts.refs.map((r) => ({ file: r, hashes: featureMap.get('intro:' + r) || [] }));
+    const intro = matchIntro(mainIntroHashes, refIntroHashes);
+
+    // --- outro matching ---
+    let outro = null;
+    if (opts.duration && outroOffset > 0) {
+      const mainOutroHashes = featureMap.get('outro:' + opts.main) || [];
+      const refOutroHashes = opts.refs.map((r) => ({ file: r, hashes: featureMap.get('outro:' + r) || [] }));
       outro = matchOutro(mainOutroHashes, refOutroHashes, outroOffset);
     }
 
