@@ -625,6 +625,27 @@ function detectFromChapterTiming(context, options) {
   }
 }
 
+function mergeSectionGroups(existing, incoming) {
+  if (!Array.isArray(incoming) || !incoming.length) return existing;
+  if (!Array.isArray(existing) || !existing.length) return incoming;
+
+  var filtered = incoming.filter(function (incomingGroup) {
+    var incomingDuration = incomingGroup.end - incomingGroup.start;
+    for (var i = 0; i < existing.length; i++) {
+      var existingGroup = existing[i];
+      var overlapStart = Math.max(existingGroup.start, incomingGroup.start);
+      var overlapEnd = Math.min(existingGroup.end, incomingGroup.end);
+      var overlap = overlapEnd - overlapStart;
+      if (overlap > 0 && overlap / incomingDuration > 0.7) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  return existing.concat(filtered);
+}
+
 function finishDetection(sections, emptyMessage, context) {
   detectedSections = addAutoSkipState(
     Array.isArray(sections) ? sections : [],
@@ -689,10 +710,15 @@ async function detectCurrentSections() {
   }
 
   let sections = detectFromChapterTitles(context, options);
-  if (!sections.length) {
-    sections = await detectFromAudioMatch(context, options, runId);
-    if (sections === null) return;
+
+  // Always run audio fingerprint alongside chapter titles (not just as fallback).
+  // This ensures credits can be detected even when chapter titles already found intros.
+  if (options.detectAudioMatching) {
+    let audioSections = await detectFromAudioMatch(context, options, runId);
+    if (audioSections === null) return;
+    sections = mergeSectionGroups(sections, audioSections);
   }
+
   if (!sections.length) {
     sections = detectFromChapterTiming(context, options);
   }
