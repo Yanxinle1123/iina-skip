@@ -1,131 +1,131 @@
-<h1 align="center">Skip Intro plugin for IINA</h1>
+<h1 align="center">IINA 跳过片头插件</h1>
 
 <p align="center">
-Skip Intro adds intro, recap and credits skipping to <a href="https://iina.io/">IINA</a>, the modern media player for macOS.
+Skip Intro 为 <a href="https://iina.io/">IINA</a>（macOS 上的现代媒体播放器）增加了跳过片头、回顾和片尾字幕的功能。
 </p>
 
 <p align="center">
-<a href="#features">Features</a> ·
-<a href="#preview">Preview</a> ·
-<a href="#installation">Installation</a> ·
-<a href="#detection-methods">Detection Methods</a> ·
-<a href="#troubleshooting">Troubleshooting</a>
+<a href="#功能特性">功能特性</a> ·
+<a href="#效果预览">效果预览</a> ·
+<a href="#安装方法">安装方法</a> ·
+<a href="#检测方式">检测方式</a> ·
+<a href="#故障排查">故障排查</a>
 </p>
 
 ---
 
-This plugin gives people who watch shows and movies locally a streaming-style way to skip intros and other sections. It detects sections through three different methods: chapter titles, audio fingerprint analysis, or chapter timings, then either shows a skip pop-up or auto-skips based on your preferences.
+本插件让在本地观看剧集和电影的用户，也能拥有类似流媒体平台的跳过片头等章节的体验。它通过三种不同的方式检测片段：章节标题、音频指纹分析或章节时序，然后根据你的偏好弹出跳过提示或自动跳过。
 
-## Features
+## 功能特性
 
-- Skip prompts for intros, recaps and credits.
-- Uses three detection methods: chapter titles, audio fingerprint analysis and chapter timings.
-- Optional Auto-Skip for mouse-free skipping.
-- Customize detection and skip behavior through the preferences page.
-- Configurable skip pop-up timeout, end buffer, button styling, hotkey and more.
+- 针对片头、回顾和片尾提供跳过提示。
+- 采用三种检测方式：章节标题、音频指纹分析以及章节时序。
+- 可选「自动跳过」，无需鼠标即可跳过。
+- 通过偏好设置页面自定义检测方式与跳过行为。
+- 可配置跳过弹窗的自动隐藏时间、结尾缓冲、按钮样式、快捷键等。
 
-## Preview
+## 效果预览
 
-<p align="center"><img width="360" alt="Skip Intro pop-up appearing and dismissing" src="https://github.com/user-attachments/assets/1eaf9426-0c4f-43ac-97fd-d42523cbf948"/></p>
+<p align="center"><img width="360" alt="跳过片头弹窗出现并消失" src="https://github.com/user-attachments/assets/1eaf9426-0c4f-43ac-97fd-d42523cbf948"/></p>
 
-## Installation
+## 安装方法
 
-### Install the Plugin
+### 安装插件
 
-1. Install and open [IINA](https://iina.io/), then go to `Settings -> Plugins` from the menu bar.
-2. Choose `Install from GitHub...`.
-3. Paste `pparanoiidd/iina-skip-intro` and install.
-   > **Note:** See [Permissions](#permissions) for why the plugin asks for each permission.
-4. Restart IINA.
-5. Open `Settings -> Plugins -> Skip Intro -> Preferences` to choose detection methods and skip behavior.
+1. 安装并打开 [IINA](https://iina.io/)，然后从菜单栏进入 `设置 -> 插件`。
+2. 选择 `从 GitHub 安装...`。
+3. 粘贴 `pparanoiidd/iina-skip-intro` 并安装。
+   > **注意：** 关于插件申请各项权限的原因，请参见 [权限说明](#权限说明)。
+4. 重启 IINA。
+5. 打开 `设置 -> 插件 -> 跳过片头 -> 偏好设置`，选择检测方式与跳过行为。
 
-### Optional: Enable Audio Fingerprint Matching
+### 可选：启用音频指纹匹配
 
 > [!IMPORTANT]
-> Audio fingerprint matching is an advanced optional feature.
-> Many shows do not include useful chapter titles, so audio matching greatly expands the media files this plugin can support when episodes reuse the same intro audio.
+> 音频指纹匹配是一项进阶的可选功能。
+> 许多剧集并不包含有用的章节标题，因此当各集复用相同的片头音频时，音频匹配能大幅扩展本插件可支持的媒体文件范围。
 
-#### Prerequisites
+####  prerequisites（前置条件）
 
-Audio fingerprint matching requires:
+音频指纹匹配需要：
 
 - Node.js
 - FFmpeg
 
-Installing them with Homebrew:
+使用 Homebrew 安装：
 
-If you do not have Homebrew installed, install it from [brew.sh](https://brew.sh/) first, following the instructions shown by the Homebrew installer.
+如果你尚未安装 Homebrew，请先从 [brew.sh](https://brew.sh/) 安装，并按照安装器给出的提示操作。
 
-Then paste this in your Terminal to install the prerequisites:
+然后在终端中粘贴以下命令以安装前置依赖：
 
 ```console
 brew install node ffmpeg
 ```
 
-## Detection Methods
+## 检测方式
 
-Detection methods run in this order and stop after the first match. By default, only chapter title detection is enabled. You can enable or disable any method in Preferences.
+检测方式按以下顺序运行，命中第一个匹配后即停止。默认仅启用章节标题检测，你可以在偏好设置中启用或禁用任意方式。
 
-### 1. Chapter Title Detection
+### 1. 章节标题检测
 
-Uses chapter names such as `Intro`, `OP`, `Opening`, `Recap`, `Previously On`, `Credits`, `ED`, and related variants. This is the fastest and most reliable method when the file has useful chapters.
+利用章节名称，例如 `Intro`、`OP`、`Opening`、`Recap`、`Previously On`、`Credits`、`ED` 及相关变体。当文件包含有用章节时，这是最快也最可靠的方式。
 
-Title-detected intros must start near the beginning of the video and have a reasonable duration. Credits are only accepted near the end of the video, with duration limits scaled by runtime.
+通过标题检测出的片头必须靠近视频开头，且时长合理；片尾仅在靠近视频结尾时才被接受，且时长上限会随片长缩放。
 
-For chapter title matches, intros, recaps and credits can each be set to Off, Prompt or Auto-Skip.
+对于章节标题匹配，片头、回顾和片尾各自可设置为「关闭」「提示」或「自动跳过」。
 
-### 2. Audio Fingerprint Detection
+### 2. 音频指纹检测
 
-Compares the current episode with nearby playlist episodes and looks for shared audio that appears in the same broad region. This is intended for shows where episodes share the same intro but do not have helpful chapter titles. It requires at least 2 episodes.
+将当前剧集与播放列表中相邻的剧集进行比对，寻找出现在大致相同区域、且彼此共享的音频。该方式适用于各集片头相同、但缺少有用章节标题的剧集。它至少需要 2 集。
 
-The matcher:
+匹配器：
 
-- Selects up to 4 reference files from the current playlist.
-- Prefers same-season neighboring episodes when season and episode numbers can be parsed from filenames (e.g. S02E11).
-- Falls back to nearby playlist items when filename parsing is unavailable or disabled.
-- Analyzes the early part of each episode and refines boundaries.
-- Caches extracted audio features so repeat scans are faster.
+- 从当前播放列表中选取至多 4 个参考文件。
+- 当能从文件名（例如 S02E11）解析出季号和集号时，优先选择同季相邻剧集。
+- 当无法或禁用文件名解析时，回退到相邻的播放列表项。
+- 分析每集的前段内容并细化边界。
+- 缓存已提取的音频特征，使重复扫描更快。
 
-When enabled, audio matching looks for intro-length shared audio between 20 and 150 seconds long and requires a confidence threshold before accepting a match. It is disabled by default because it is an advanced optional feature and requires Node.js and FFmpeg.
+启用后，音频匹配会寻找时长介于 20 到 150 秒之间、且长度符合片头特征的共享音频，并在接受匹配前要求达到一定的置信度阈值。由于它是进阶可选功能，且需要 Node.js 和 FFmpeg，因此默认关闭。
 
-### 3. Chapter Timing Detection
+### 3. 章节时序检测
 
-Uses chapter structure as a lower-confidence fallback. It looks for an early chapter with intro-like duration followed by a much longer chapter, then scores candidates by position, duration and next-chapter dominance.
+以章节结构作为置信度较低的兜底方式。它会寻找一个时长类似片头的早期章节，其后紧接一个更长的章节，再依据位置、时长和下一章占比进行打分。
 
-This method can misfire, so it is disabled by default.
+该方式可能误判，因此默认关闭。
 
-## Scan Limits
+## 扫描限制
 
-- Detection only runs for video files that are at least 10 minutes long.
-- Videos longer than 90 minutes are treated as movie-length media. For those files, the plugin only allows credit detection from chapter titles.
-- Audio fingerprint matching analyzes the early portion of an episode and accepts shared intro candidates from 20 to 150 seconds long.
+- 检测仅对时长至少 10 分钟的视频文件运行。
+- 时长超过 90 分钟的视频被视为电影级媒体。对此类文件，插件仅允许通过章节标题检测片尾。
+- 音频指纹匹配会分析剧集的前段，并接受时长介于 20 到 150 秒之间的共享片头候选。
 
-## Troubleshooting
+## 故障排查
 
-If the plugin is not working as expected, check IINA's logs:
+如果插件未按预期工作，请检查 IINA 的日志：
 
-1. Open `Settings -> Advanced`.
-2. Enable `Advanced settings`.
-3. Enable `Logging` and restart IINA.
-4. Play the problem video so the plugin can run and write log entries.
-5. Open logs with `Ctrl + Cmd + L`.
-6. Set `Subsystem` to `Skip Intro`.
+1. 打开 `设置 -> 高级`。
+2. 启用 `高级设置`。
+3. 启用 `日志` 并重启 IINA。
+4. 播放出现问题的视频，让插件运行并写入日志条目。
+5. 使用 `Ctrl + Cmd + L` 打开日志。
+6. 将 `子系统` 设置为 `跳过片头`。
 
-Useful things to look for:
+值得关注的内容：
 
-- Missing `node` or `ffmpeg` warnings. See [Optional: Enable Audio Fingerprint Matching](#optional-enable-audio-fingerprint-matching) for setup instructions.
-- Audio detection messages about playlist references, helper lookup, confidence, or rejected matches.
+- 缺少 `node` 或 `ffmpeg` 的警告。安装步骤参见 [可选：启用音频指纹匹配](#可选启用音频指纹匹配)。
+- 关于播放列表参考、helper 查找、置信度或匹配被拒的音频检测消息。
 
-The plugin checks for audio matching dependencies in these locations:
+插件会在以下位置检查音频匹配所需的依赖：
 
-- `ffmpeg`: `/opt/homebrew/bin/ffmpeg`, `/usr/local/bin/ffmpeg`
-- `node`: `/opt/homebrew/bin/node`, `/usr/local/bin/node`, `/usr/bin/node`
+- `ffmpeg`：`/opt/homebrew/bin/ffmpeg`、`/usr/local/bin/ffmpeg`
+- `node`：`/opt/homebrew/bin/node`、`/usr/local/bin/node`、`/usr/bin/node`
 
-Audio fingerprint detection is not perfect. It works best when nearby episodes share the same intro audio and are loaded together in the playlist. It may miss intros with unusual episode ordering, poor filename parsing, too few neighbouring reference episodes or even humanly inaudible audio differences.
+音频指纹检测并不完美。当相邻剧集共享相同片头音频、且一同载入播放列表时效果最佳。在剧集排序异常、文件名解析不佳、参考剧集过少，甚至存在人耳无法分辨的音频差异时，它可能会漏检片头。
 
-## Permissions
+## 权限说明
 
-The plugin requests:
+插件申请：
 
-- `file-system` to find the bundled audio matcher, inspect local playlist items, check for dependencies, and use the audio feature cache.
-- `video-overlay` to render the skip prompt over the video.
+- `file-system`（文件系统）：用于查找内置的音频匹配器、检查本地播放列表项、核对依赖，以及使用音频特征缓存。
+- `video-overlay`（视频叠加层）：用于在视频上渲染跳过提示。

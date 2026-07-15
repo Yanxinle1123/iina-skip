@@ -182,9 +182,9 @@
         data-clickable
         role="button"
         tabindex="0"
-        aria-label="Skip Intro"
+        aria-label="跳过片头"
       >
-        <div id="title">Skip Intro</div>
+        <div id="title">跳过片头</div>
       </div>
     </div>
 
@@ -217,7 +217,7 @@
       }
 
       function setSkipLabel(label) {
-        var resolvedLabel = typeof label === 'string' && label ? label : 'Skip Intro';
+        var resolvedLabel = typeof label === 'string' && label ? label : '跳过片头';
         title.textContent = resolvedLabel;
         box.setAttribute('aria-label', resolvedLabel);
       }

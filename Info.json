@@ -1,5 +1,5 @@
 {
-  "name": "Skip Intro",
+  "name": "跳过片头",
   "identifier": "com.pparanoiidd.skipintro",
   "version": "1.0.0",
   "ghRepo": "pparanoiidd/iina-skip-intro",
@@ -7,7 +7,7 @@
   "author": {
     "name": "pparanoiidd"
   },
-  "description": "Skip-intro overlay for IINA.",
+  "description": "IINA 的跳过片头叠加层插件。",
   "entry": "main.js",
   "preferencesPage": "preferences.html",
   "preferenceDefaults": {

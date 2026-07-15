@@ -30,7 +30,7 @@ function createAudioMatchDetector(dependencies) {
   let homeDirectory = undefined;
 
   function logAudio(message) {
-    log('Audio intro detection: ' + message);
+    log('音频片头检测：' + message);
   }
 
   async function getHomeDirectory() {
@@ -165,7 +165,7 @@ function createAudioMatchDetector(dependencies) {
     if (triedPaths.indexOf(tildeDevPath) === -1) triedPaths.push(tildeDevPath);
     if (fileExists(tildeDevPath)) return resolvePluginPath(tildeDevPath);
 
-    logAudio('helper lookup tried: ' + triedPaths.join(' | '));
+    logAudio('helper 查找尝试路径：' + triedPaths.join(' | '));
     return null;
   }
 
@@ -173,7 +173,7 @@ function createAudioMatchDetector(dependencies) {
     try {
       return iinaUtils.resolvePath('@data/audio-intro-match-cache');
     } catch (error) {
-      logAudio('feature cache disabled: failed to resolve @data path: ' + error);
+      logAudio('特征缓存已禁用：解析 @data 路径失败：' + error);
       return null;
     }
   }
@@ -187,18 +187,18 @@ function createAudioMatchDetector(dependencies) {
           if (isPlayableLocalMedia(playlistPath)) {
             return getLocalFilePath(playlistPath);
           }
-          logAudio('playlist current item is not a playable local media file');
+          logAudio('播放列表当前项不是可播放的本地媒体文件');
         }
       }
     } catch (error) {
-      logAudio('playlist lookup failed, falling back to mpv path: ' + error);
+      logAudio('播放列表查询失败，回退到 mpv 路径：' + error);
     }
 
     if (!mpv || typeof mpv.getString !== 'function') return null;
 
     const path = mpv.getString('path');
     const localPath = typeof path === 'string' && path ? getLocalFilePath(path) || path : null;
-    logAudio('mpv current path: ' + (localPath || '(none)'));
+    logAudio('mpv 当前路径：' + (localPath || '(无)'));
     return localPath;
   }
 
@@ -372,7 +372,7 @@ function createAudioMatchDetector(dependencies) {
     const items = getPlaylistItems();
     const currentIndex = getCurrentPlaylistIndex(items, mainFile);
     if (currentIndex < 0) {
-      logAudio('playlist scan: ' + items.length + ' item(s), no current item found');
+      logAudio('播放列表扫描：共 ' + items.length + ' 项，未找到当前项');
       return [];
     }
 
@@ -381,12 +381,12 @@ function createAudioMatchDetector(dependencies) {
     const currentParsed = parseEpisodeNumbers ? parseSeasonEpisode(currentPath) : null;
     const candidates = buildPlaylistReferenceCandidates(items, currentIndex, parseEpisodeNumbers);
     logAudio(
-      'playlist scan: ' +
+      '播放列表扫描：共 ' +
         items.length +
-        ' item(s), current index ' +
+        ' 项，当前索引 ' +
         currentIndex +
-        ', current ' +
-        (parseEpisodeNumbers ? formatParsedSeasonEpisode(currentParsed) : 'playlist-order only'),
+        '，当前项 ' +
+        (parseEpisodeNumbers ? formatParsedSeasonEpisode(currentParsed) : '仅按播放列表顺序'),
     );
     let selected = [];
 
@@ -398,16 +398,16 @@ function createAudioMatchDetector(dependencies) {
         currentParsed,
       ).sort(sortByEpisodeOffset(currentParsed.episode));
       logAudio(
-        'reference candidates: ' +
+        '参考候选：共 ' +
           candidates.length +
-          ' usable, ' +
+          ' 个可用，其中 ' +
           selected.length +
-          ' same-season in current episode run',
+          ' 个为当前集所在季的连续剧集',
       );
     } else {
       selected = candidates.sort(sortByPlaylistDistance(currentIndex));
       logAudio(
-        'reference candidates: ' + candidates.length + ' usable, using playlist-neighbor fallback',
+        '参考候选：共 ' + candidates.length + ' 个可用，使用播放列表相邻项回退',
       );
     }
 
@@ -417,8 +417,8 @@ function createAudioMatchDetector(dependencies) {
         return candidate.path;
       });
     logAudio(
-      'selected reference file(s): ' +
-        (referenceFiles.length ? referenceFiles.join(' | ') : '(none)'),
+      '已选择参考文件：' +
+        (referenceFiles.length ? referenceFiles.join(' | ') : '(无)'),
     );
     return referenceFiles;
   }
@@ -451,7 +451,7 @@ function createAudioMatchDetector(dependencies) {
         {
           start: start,
           end: end,
-          titles: ['Audio fingerprint intro'],
+          titles: ['音频指纹片头'],
           source: SECTION_SOURCE_AUDIO_FINGERPRINT,
           kind: SECTION_KIND_INTRO,
           confidence: output.confidence || null,
@@ -462,37 +462,37 @@ function createAudioMatchDetector(dependencies) {
   }
 
   async function detectSectionFromAudioMatch(options) {
-    logAudio('waiting ' + AUDIO_MATCH_PLAYLIST_DELAY_MS + 'ms before reading playlist');
+    logAudio('读取播放列表前等待 ' + AUDIO_MATCH_PLAYLIST_DELAY_MS + ' 毫秒');
     await delay(AUDIO_MATCH_PLAYLIST_DELAY_MS);
 
     const mainFile = getCurrentMediaFile();
     const referenceFiles = getAudioReferenceFiles(mainFile, options);
 
     if (!mainFile || !Array.isArray(referenceFiles) || !referenceFiles.length) {
-      logAudio('skipped: missing current file or reference files');
+      logAudio('已跳过：缺少当前文件或参考文件');
       return null;
     }
 
     const nodePath = await locateBinary('node');
     if (!nodePath) {
-      logAudio('skipped: node was not found');
+      logAudio('已跳过：未找到 node');
       return null;
     }
-    logAudio('using node: ' + nodePath);
+    logAudio('使用 node：' + nodePath);
 
     const helperPath = getAudioMatchHelperPath();
     if (!helperPath) {
-      logAudio('skipped: audio matcher helper was not found');
+      logAudio('已跳过：未找到音频匹配 helper');
       return null;
     }
-    logAudio('using helper: ' + helperPath);
+    logAudio('使用 helper：' + helperPath);
 
     const ffmpegPath = await locateBinary('ffmpeg');
     if (!ffmpegPath) {
-      logAudio('skipped: ffmpeg was not found');
+      logAudio('已跳过：未找到 ffmpeg');
       return null;
     }
-    logAudio('using ffmpeg: ' + ffmpegPath);
+    logAudio('使用 ffmpeg：' + ffmpegPath);
 
     const refs = referenceFiles.slice(0, AUDIO_MATCH_MAX_REFERENCE_FILES);
     const args = [helperPath, '--main', mainFile, '--refs-json', JSON.stringify(refs)];
@@ -504,23 +504,23 @@ function createAudioMatchDetector(dependencies) {
       args.push('--cache-dir', cacheDir);
     }
 
-    logAudio('running helper with ' + refs.length + ' reference file(s)');
+    logAudio('正在运行 helper，共 ' + refs.length + ' 个参考文件');
     const result = await iinaUtils.exec(nodePath, args);
     let payload = null;
     try {
       payload = JSON.parse(result.stdout);
     } catch (error) {
-      logAudio('helper returned invalid JSON stdout: ' + (result.stdout || '(empty)'));
-      if (result.stderr) logAudio('helper stderr: ' + result.stderr);
+      logAudio('helper 返回了无效的 JSON 标准输出：' + (result.stdout || '(空)'));
+      if (result.stderr) logAudio('helper 标准错误：' + result.stderr);
       return null;
     }
 
     if (!payload.ok) {
       logAudio(
-        'helper reported no match' +
+        'helper 报告未匹配' +
           (payload.code ? ' [' + payload.code + ']' : '') +
-          ': ' +
-          (payload.message || '(no message)'),
+          '：' +
+          (payload.message || '(无消息)'),
       );
       return null;
     }
@@ -528,17 +528,17 @@ function createAudioMatchDetector(dependencies) {
     const output = payload.output;
     if (isValidAudioMatchOutput(output)) {
       logAudio(
-        'matcher returned intro ' +
+        '匹配器返回的片头区间为 ' +
           output.intro.start_seconds.toFixed(2) +
           's-' +
           output.intro.end_seconds.toFixed(2) +
-          's, confidence ' +
+          's，置信度 ' +
           (output.confidence
             ? output.confidence.score + ' (' + output.confidence.label + ')'
-            : '(unknown)'),
+            : '(未知)'),
       );
     } else {
-      logAudio('matcher returned an invalid intro result');
+      logAudio('匹配器返回了无效的片头结果');
     }
 
     return isValidAudioMatchOutput(output) ? buildAudioMatchSectionGroup(output) : null;

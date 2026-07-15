@@ -2276,7 +2276,7 @@ function toInt16Array(bytes) {
   } else {
     throw new IntroMatchError(
       "INVALID_PCM_OUTPUT",
-      "Decoded audio bytes were not returned as bytes.",
+      "解码后的音频字节未以字节形式返回。",
       { receivedType: typeof bytes }
     );
   }
@@ -2294,12 +2294,12 @@ function mapCommandFailure(error, command, details = {}) {
     return error;
   }
   if (error && error.code === "ENOENT") {
-    return new IntroMatchError("TOOL_MISSING", `${command} not found in PATH.`, {
+    return new IntroMatchError("TOOL_MISSING", `在 PATH 中未找到 ${command}。`, {
       tool: command,
       ...details
     });
   }
-  return new IntroMatchError("COMMAND_FAILED", `${command} execution failed.`, {
+  return new IntroMatchError("COMMAND_FAILED", `${command} 执行失败。`, {
     tool: command,
     cause: error instanceof Error ? error.message : String(error),
     ...details
@@ -2317,7 +2317,7 @@ async function ensureToolAvailable(tool, runCommand) {
     throw mapCommandFailure(error, tool, { phase: "tool_check" });
   }
   if (result.code !== 0) {
-    throw new IntroMatchError("TOOL_MISSING", `${tool} not found in PATH.`, {
+    throw new IntroMatchError("TOOL_MISSING", `在 PATH 中未找到 ${tool}。`, {
       tool,
       stderr: result.stderr,
       phase: "tool_check"
@@ -2348,7 +2348,7 @@ async function extractPcmMono16le(path, seconds, sampleRate, runCommand) {
     throw mapCommandFailure(error, "ffmpeg", { path, phase: "decode" });
   }
   if (result.code !== 0) {
-    throw new IntroMatchError("FFMPEG_FAILED", `ffmpeg failed for ${path}.`, {
+    throw new IntroMatchError("FFMPEG_FAILED", `ffmpeg 处理 ${path} 失败。`, {
       path,
       stderr: result.stderr
     });
@@ -2546,12 +2546,12 @@ async function buildEpisodeFeaturesUncached(path, analyzeSeconds, sampleRate, ru
   const frameSize = Math.trunc(sampleRate * FRAME_WINDOW_SECONDS2);
   const hopSize = Math.trunc(sampleRate * FRAME_HOP_SECONDS2);
   if (frameSize <= 0 || hopSize <= 0) {
-    throw new IntroMatchError("INVALID_FRAME_SIZE", "Invalid analysis frame parameters.", {
+      throw new IntroMatchError("INVALID_FRAME_SIZE", "无效的分析帧参数。", {
       sampleRate
     });
   }
   if (pcm.length < frameSize) {
-    throw new IntroMatchError("NOT_ENOUGH_AUDIO", `Not enough decoded audio in: ${path}`, { path });
+    throw new IntroMatchError("NOT_ENOUGH_AUDIO", `解码出的音频不足：${path}`, { path });
   }
   const totalFrames = Math.floor((pcm.length - frameSize) / hopSize) + 1;
   const melFrames = [];
@@ -2619,7 +2619,7 @@ function ensureEpisodeHasMatchableVariance(mainEpisode) {
   if (mainEpisode.volumeVariance < 1) {
     throw new IntroMatchError(
       "NO_VALID_CANDIDATES",
-      "Main episode audio appears too flat to match."
+      "主剧集音频过于平缓，无法匹配。"
     );
   }
 }
@@ -2631,7 +2631,7 @@ function compareEpisodeAgainstReferences(mainEpisode, refEpisodes, minLen, maxLe
 function buildSharedAudioCandidates(pairwiseRuns, minLen, maxLen) {
   const rawCandidates = buildConsensusCandidates(pairwiseRuns, minLen, maxLen);
   if (!rawCandidates.length) {
-    throw new IntroMatchError("NO_VALID_CANDIDATES", "No repeated diagonal runs found.");
+    throw new IntroMatchError("NO_VALID_CANDIDATES", "未找到重复的对角连续段。");
   }
   return rawCandidates;
 }
@@ -2710,18 +2710,18 @@ function formatOutput(mainFile, refFiles, result, minConfidence) {
     }))
   };
   if (!output.accepted) {
-    output.rejected_reason = `Best match confidence ${result.sharedAudio.confidenceScore.toFixed(2)} is below threshold ${minConfidence.toFixed(2)}`;
+    output.rejected_reason = `最佳匹配置信度 ${result.sharedAudio.confidenceScore.toFixed(2)} 低于阈值 ${minConfidence.toFixed(2)}`;
   }
   return output;
 }
 async function findIntroMatch({ mainFile, refFiles, options = {}, runCommand }) {
   if (typeof runCommand !== "function") {
-    throw new IntroMatchError("RUN_COMMAND_REQUIRED", "A runCommand function is required.");
+    throw new IntroMatchError("RUN_COMMAND_REQUIRED", "需要一个 runCommand 函数。");
   }
   if (!mainFile || !Array.isArray(refFiles) || refFiles.length < 1 || refFiles.length > MAX_REFERENCE_FILES) {
     throw new IntroMatchError(
       "INVALID_FILE_COUNT",
-      `Please provide MAIN plus 1 to ${MAX_REFERENCE_FILES} reference files.`,
+      `请提供主文件，外加 1 到 ${MAX_REFERENCE_FILES} 个参考文件。`,
       {
         mainFile,
         refFiles
@@ -2733,9 +2733,9 @@ async function findIntroMatch({ mainFile, refFiles, options = {}, runCommand }) 
     ...options
   };
   const { onProgress } = resolved;
-  reportProgress(onProgress, "checking_tools");
+  reportProgress(onProgress, "正在检查工具");
   await ensureToolAvailable("ffmpeg", runCommand);
-  reportProgress(onProgress, "extracting_features");
+  reportProgress(onProgress, "正在提取特征");
   const featureCache = resolved.featureCacheDir ? {
     dir: resolved.featureCacheDir,
     maxBytes: resolved.featureCacheMaxBytes
@@ -2748,14 +2748,14 @@ async function findIntroMatch({ mainFile, refFiles, options = {}, runCommand }) 
     runCommand,
     featureCache
   );
-  reportProgress(onProgress, "matching");
+  reportProgress(onProgress, "正在匹配");
   const pipeline = runMatchingPipeline(
     mainEpisode,
     refEpisodes,
     resolved.minIntro,
     resolved.maxIntro
   );
-  reportProgress(onProgress, "post_processing_intro");
+  reportProgress(onProgress, "正在对片头做后处理");
   const intro = await postProcessIntroFromSharedAudio2(
     pipeline.sharedAudio,
     mainEpisode,
@@ -2794,7 +2794,7 @@ function printJson(payload) {
 function parseInteger(flag, value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) {
-    throw new IntroMatchError("INVALID_ARGUMENT", `Expected an integer for ${flag}.`, {
+      throw new IntroMatchError("INVALID_ARGUMENT", `参数 ${flag} 应为整数。`, {
       flag,
       value
     });
@@ -2804,7 +2804,7 @@ function parseInteger(flag, value) {
 function parseFloatValue(flag, value) {
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed)) {
-    throw new IntroMatchError("INVALID_ARGUMENT", `Expected a number for ${flag}.`, {
+    throw new IntroMatchError("INVALID_ARGUMENT", `参数 ${flag} 应为数字。`, {
       flag,
       value
     });
@@ -2814,7 +2814,7 @@ function parseFloatValue(flag, value) {
 function readOptionValue(argv, index, flag) {
   const value = argv[index + 1];
   if (value === void 0 || value.startsWith("--")) {
-    throw new IntroMatchError("INVALID_ARGUMENT", `Missing value for ${flag}.`, { flag });
+    throw new IntroMatchError("INVALID_ARGUMENT", `参数 ${flag} 缺少取值。`, { flag });
   }
   return value;
 }
@@ -2823,10 +2823,10 @@ function parseRefsJson(value) {
   try {
     refs = JSON.parse(value);
   } catch {
-    throw new IntroMatchError("INVALID_ARGUMENT", "Expected --refs-json to be a JSON array.");
+    throw new IntroMatchError("INVALID_ARGUMENT", "--refs-json 应为 JSON 数组。");
   }
   if (!Array.isArray(refs) || refs.some((ref) => typeof ref !== "string" || !ref)) {
-    throw new IntroMatchError("INVALID_ARGUMENT", "Expected --refs-json to contain file paths.");
+    throw new IntroMatchError("INVALID_ARGUMENT", "--refs-json 应包含文件路径。");
   }
   return refs;
 }
@@ -2875,12 +2875,12 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
-    throw new IntroMatchError("INVALID_ARGUMENT", `Unknown argument: ${arg}`, { arg });
+    throw new IntroMatchError("INVALID_ARGUMENT", `未知参数：${arg}`, { arg });
   }
   if (!mainFile || !Array.isArray(refFiles) || refFiles.length < 1 || refFiles.length > MAX_REFERENCE_FILES) {
     throw new IntroMatchError(
       "INVALID_FILE_COUNT",
-      `Expected --main plus 1 to ${MAX_REFERENCE_FILES} refs.`,
+      `需要提供 --main，以及 1 到 ${MAX_REFERENCE_FILES} 个参考文件。`,
       { mainFile, refFiles }
     );
   }
@@ -2899,7 +2899,7 @@ function parseArgs(argv) {
 function validateFiles(paths) {
   for (const path of paths) {
     if (!existsSync(path)) {
-      throw new IntroMatchError("FILE_NOT_FOUND", `File not found: ${path}`, { path });
+      throw new IntroMatchError("FILE_NOT_FOUND", `未找到文件：${path}`, { path });
     }
   }
 }

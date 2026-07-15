@@ -293,9 +293,9 @@ function showAudioDependencyWarning(missingDependencies) {
   shownAudioDependencyWarningKey = key;
 
   const message =
-    'Skip Intro: audio fingerprint detection needs ' +
+    '跳过片头：音频指纹检测需要 ' +
     formatAudioDependencyList(missingDependencies) +
-    '. See README.md for setup instructions, or disable audio matching in settings to hide this.';
+    '。请查阅 README.md 了解配置方法，或在设置中关闭音频匹配以隐藏此提示。';
   log(message);
 }
 
@@ -336,14 +336,14 @@ function getSectionSources(sectionGroup) {
 }
 
 function getSkipLabel(sectionGroup) {
-  if (!sectionGroup) return 'Skip Intro';
-  if (sectionGroup.sections.length > 1) return 'Skip Opening';
+  if (!sectionGroup) return '跳过片头';
+  if (sectionGroup.sections.length > 1) return '跳过开场';
 
   const kind = sectionGroup.sections[0].kind;
-  if (kind === SECTION_KIND_CREDITS) return 'Skip Credits';
-  if (kind === SECTION_KIND_RECAP) return 'Skip Recap';
-  if (kind === SECTION_KIND_SECTION) return 'Skip Opening';
-  return 'Skip Intro';
+  if (kind === SECTION_KIND_CREDITS) return '跳过片尾';
+  if (kind === SECTION_KIND_RECAP) return '跳过回顾';
+  if (kind === SECTION_KIND_SECTION) return '跳过开场';
+  return '跳过片头';
 }
 
 function getSectionDescription(sectionGroup) {
@@ -358,14 +358,14 @@ function getSectionDescription(sectionGroup) {
 }
 
 function getSectionLabelNoun(sectionGroup) {
-  if (!sectionGroup) return 'Intro';
-  if (sectionGroup.sections.length > 1) return 'Opening';
+  if (!sectionGroup) return '片头';
+  if (sectionGroup.sections.length > 1) return '开场';
 
   const kind = sectionGroup.sections[0].kind;
-  if (kind === SECTION_KIND_CREDITS) return 'Credits';
-  if (kind === SECTION_KIND_RECAP) return 'Recap';
-  if (kind === SECTION_KIND_SECTION) return 'Opening';
-  return 'Intro';
+  if (kind === SECTION_KIND_CREDITS) return '片尾';
+  if (kind === SECTION_KIND_RECAP) return '回顾';
+  if (kind === SECTION_KIND_SECTION) return '开场';
+  return '片头';
 }
 
 function getAutoSkipPendingLabel(sectionGroup) {
@@ -446,7 +446,7 @@ function addAutoSkipState(sectionGroups, mediaPath) {
       autoSkip &&
       shouldDisableIntroAutoSkipForFirstEpisodeOfSeason(sectionGroup, mediaPath, settings)
     ) {
-      log('Auto-skip disabled: not skipping intro for first episode of the season');
+      log('已禁用自动跳过：本季第一集不跳过片头');
       autoSkip = false;
     }
     return Object.assign({}, sectionGroup, {
@@ -506,7 +506,7 @@ function snapAudioSectionGroupToChapters(sectionGroup, chapters) {
   }
 
   log(
-    'Snapped audio intro to chapter marker(s): ' +
+    '已将音频片头吸附到章节标记：' +
       sectionGroup.start.toFixed(2) +
       's-' +
       sectionGroup.end.toFixed(2) +
@@ -537,7 +537,7 @@ async function getDetectionContext(runId) {
   const currentPath = getCurrentMediaPath();
   if (!isVideoFilePath(currentPath)) {
     return {
-      skipMessage: 'Skipping intro detection: current file is not a supported video file',
+      skipMessage: '跳过片头检测：当前文件不是受支持的视频文件',
     };
   }
 
@@ -545,9 +545,9 @@ async function getDetectionContext(runId) {
   if (!isDurationLongEnoughForDetection(duration)) {
     return {
       skipMessage:
-        'Skipping intro detection: duration is unknown or below ' +
+        '跳过片头检测：时长未知或低于 ' +
         Math.round(DETECTION_MIN_DURATION / 60) +
-        ' minutes',
+        ' 分钟',
     };
   }
 
@@ -555,7 +555,7 @@ async function getDetectionContext(runId) {
   try {
     chapters = core.getChapters();
   } catch (error) {
-    log('Chapter lookup failed: ' + error);
+    log('章节查询失败：' + error);
   }
 
   return {
@@ -569,7 +569,7 @@ function detectFromChapterTitles(context, options) {
   try {
     return detectSectionsFromChapterTitles(context.chapters, context.duration, options);
   } catch (error) {
-    log('Chapter title intro detection failed: ' + error);
+    log('章节标题片头检测失败：' + error);
     return [];
   }
 }
@@ -594,7 +594,7 @@ async function detectFromAudioMatch(context, options, runId) {
       : [];
   } catch (error) {
     if (runId !== detectionRunId) return null;
-    log('Audio intro detection failed: ' + error);
+    log('音频片头检测失败：' + error);
     return [];
   }
 }
@@ -603,7 +603,7 @@ function detectFromChapterTiming(context, options) {
   try {
     return detectSectionsFromChapterTiming(context.chapters, context.duration, options);
   } catch (error) {
-    log('Chapter timing intro detection failed: ' + error);
+    log('章节时序片头检测失败：' + error);
     return [];
   }
 }
@@ -621,7 +621,7 @@ function finishDetection(sections, emptyMessage, context) {
   }
 
   if (!detectedSections.length) {
-    log('No skip sections detected');
+    log('未检测到可跳过的片段');
     updateOverlay();
     return;
   }
@@ -629,15 +629,15 @@ function finishDetection(sections, emptyMessage, context) {
   for (let i = 0; i < detectedSections.length; i++) {
     const sectionGroup = detectedSections[i];
     log(
-      'Detected ' +
+      '检测到 ' +
         getSectionDescription(sectionGroup) +
-        ' from ' +
+        '，区间为 ' +
         sectionGroup.start.toFixed(2) +
-        's to ' +
+        's 至 ' +
         sectionGroup.end.toFixed(2) +
-        's via ' +
+        's，来源：' +
         getSectionSources(sectionGroup).join(', ') +
-        ': ' +
+        '，标题：' +
         getSectionTitles(sectionGroup).join(', '),
     );
   }
@@ -650,7 +650,7 @@ async function detectCurrentSections() {
   const initialOptions = getDetectionOptionsFromPreferences();
 
   if (!hasEnabledDetectionMethod(initialOptions)) {
-    finishDetection([], 'Skipping intro detection: all detection methods are disabled');
+    finishDetection([], '跳过片头检测：所有检测方式均已禁用');
     return;
   }
 
@@ -665,7 +665,7 @@ async function detectCurrentSections() {
   if (!hasEnabledDetectionMethod(options)) {
     finishDetection(
       [],
-      'Skipping intro detection: movie-length media only detects credits from chapter titles',
+      '跳过片头检测：电影级媒体仅通过章节标题检测片尾',
       context,
     );
     return;
@@ -702,7 +702,7 @@ function dismissOverlay() {
 
 function skipSection(sectionGroup, reason, options) {
   if (!sectionGroup) {
-    log('Skip requested with no detected section');
+    log('触发跳过时未检测到对应片段');
     dismissOverlay();
     return;
   }
@@ -730,7 +730,7 @@ function handleSkipKeyDown(data) {
     return true;
   }
 
-  skipSection(currentOverlaySection, 'Skip requested from key binding');
+  skipSection(currentOverlaySection, '通过快捷键触发跳过');
   return true;
 }
 
@@ -740,7 +740,7 @@ function unregisterSkipKeyBinding() {
   try {
     input.onKeyDown(registeredSkipKeyBinding, null);
   } catch (error) {
-    log('Skip key binding unregister failed: ' + error);
+    log('跳过快捷键注销失败：' + error);
   }
   registeredSkipKeyBinding = null;
 }
@@ -757,9 +757,9 @@ function syncSkipKeyBinding() {
   try {
     input.onKeyDown(keyBinding, handleSkipKeyDown);
     registeredSkipKeyBinding = keyBinding;
-    log('Registered skip key binding: ' + keyBinding);
+    log('已注册跳过快捷键：' + keyBinding);
   } catch (error) {
-    log('Skip key binding registration failed for "' + keyBinding + '": ' + error);
+    log('跳过快捷键注册失败（"' + keyBinding + '"）：' + error);
   }
 }
 
@@ -769,25 +769,25 @@ function registerHandlers() {
   syncSkipKeyBinding();
 
   overlay.onMessage('skip', function () {
-    skipSection(currentOverlaySection, 'Skip requested');
+    skipSection(currentOverlaySection, '用户点击跳过');
   });
 
   overlay.onMessage('autoDismiss', function () {
     if (!overlayVisible || !currentOverlaySection) return;
 
-    log('Auto dismissed after ' + getPopupAutoDismissSeconds() + 's');
+    log('在 ' + getPopupAutoDismissSeconds() + ' 秒后自动消失');
     dismissOverlay();
   });
 
   overlay.onMessage('error', function (msg) {
-    log('Overlay error: ' + msg);
+    log('叠加层错误：' + msg);
   });
 }
 
 function initializeOverlay() {
   if (overlayInitialized || !core.window.loaded) return;
   overlayInitialized = true;
-  log('Initializing overlay');
+  log('正在初始化叠加层');
 
   overlay.loadFile('overlay.html');
 }
@@ -908,7 +908,7 @@ function updateOverlay(position) {
 
     skipSection(
       activeAutoSkipSection,
-      'Auto-skip triggered for ' + getSectionDescription(activeAutoSkipSection),
+      '已触发自动跳过：' + getSectionDescription(activeAutoSkipSection),
       {
         keepOverlayVisible: activeAutoSkipSection.showAutoSkipStatus,
       },
@@ -935,11 +935,11 @@ function updateOverlay(position) {
   if (show === overlayVisible && !sectionChanged) return;
 
   log(
-    (show ? 'Showing' : 'Hiding') +
-      ' overlay at ' +
+    (show ? '显示' : '隐藏') +
+      ' 叠加层，位置 ' +
       position.toFixed(2) +
       's' +
-      (show ? ' for ' + getSectionDescription(activeSection) : ''),
+      (show ? '，片段：' + getSectionDescription(activeSection) : ''),
   );
   setOverlayVisible(show, activeSection);
 }
@@ -958,12 +958,12 @@ function resetState() {
 }
 
 event.on('iina.window-loaded', function () {
-  log('Window loaded');
+  log('窗口已加载');
   initializeOverlay();
 });
 
 event.on('iina.plugin-overlay-loaded', function () {
-  log('Overlay view loaded');
+  log('叠加层视图已加载');
   overlayReady = true;
   overlay.show();
   overlay.setClickable(false);
@@ -972,7 +972,7 @@ event.on('iina.plugin-overlay-loaded', function () {
 });
 
 event.on('mpv.file-loaded', function () {
-  log('File loaded');
+  log('文件已加载');
   resetState();
   detectCurrentSections();
   updateOverlay();
