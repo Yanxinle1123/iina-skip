@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -17,6 +17,76 @@ const SEARCH_WINDOW_SECONDS = 3;
 const SEARCH_WINDOW_FRAMES = Math.ceil(SEARCH_WINDOW_SECONDS * FRAME_FPS);
 const MIN_MATCH_FRAMES = Math.ceil(MIN_MATCH_SECONDS * FRAME_FPS);
 const MAX_MATCH_FRAMES = Math.floor(MAX_MATCH_SECONDS * FRAME_FPS);
+
+// --- algorithm fingerprint for cache invalidation ---
+const ALGORITHM_VERSION = 'v1';
+
+function computeAlgorithmFingerprint() {
+  const params = {
+    ANALYZE_SECONDS,
+    FRAME_FPS,
+    FRAME_WIDTH,
+    FRAME_HEIGHT,
+  };
+  const hash = createHash('md5')
+    .update(JSON.stringify(params))
+    .digest('hex')
+    .slice(0, 8);
+  return `${ALGORITHM_VERSION}_${hash}`;
+}
+
+const ALGORITHM_FINGERPRINT = computeAlgorithmFingerprint();
+
+// --- disk cache for frame hashes ---
+const CACHE_DIR = join(tmpdir(), 'iina-skip-cache');
+
+function ensureCacheDir() {
+  if (!existsSync(CACHE_DIR)) {
+    mkdirSync(CACHE_DIR, { recursive: true });
+  }
+}
+
+function getFileFingerprint(filePath) {
+  return createHash('md5').update(filePath).digest('hex').slice(0, 16);
+}
+
+function getCachePath(filePath) {
+  ensureCacheDir();
+  const fileFp = getFileFingerprint(filePath);
+  return join(CACHE_DIR, `${fileFp}_${ALGORITHM_FINGERPRINT}.json`);
+}
+
+function regionKey(startSeconds, durationSeconds) {
+  return `${startSeconds}_${durationSeconds}`;
+}
+
+function loadCache(filePath) {
+  const cachePath = getCachePath(filePath);
+  if (!existsSync(cachePath)) return null;
+  try {
+    const raw = readFileSync(cachePath, 'utf-8');
+    const cached = JSON.parse(raw);
+    if (!cached || cached.fingerprint !== ALGORITHM_FINGERPRINT) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function saveCache(filePath, regions) {
+  const cachePath = getCachePath(filePath);
+  const data = {
+    fingerprint: ALGORITHM_FINGERPRINT,
+    cached_at: new Date().toISOString(),
+    file: filePath,
+    regions,
+  };
+  try {
+    writeFileSync(cachePath, JSON.stringify(data), 'utf-8');
+  } catch {
+    // cache write failure is non-fatal
+  }
+}
 
 // --- error handling ---------------------------------------------------------
 class VideoMatchError extends Error {
@@ -66,9 +136,13 @@ function ffprobeDuration(path, ffmpegPath) {
   });
 }
 
-function extractFrames(path, startSeconds, durationSeconds, ffmpegPath) {
+function extractFramesRaw(path, startSeconds, durationSeconds, ffmpegPath, useHWAccel) {
   return new Promise((resolve, reject) => {
-    const args = [
+    const args = [];
+    if (useHWAccel) {
+      args.push('-hwaccel', 'videotoolbox');
+    }
+    args.push(
       '-ss', String(startSeconds),
       '-i', path,
       '-t', String(durationSeconds),
@@ -76,7 +150,7 @@ function extractFrames(path, startSeconds, durationSeconds, ffmpegPath) {
       '-an',
       '-f', 'rawvideo',
       'pipe:1',
-    ];
+    );
 
     const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -95,6 +169,16 @@ function extractFrames(path, startSeconds, durationSeconds, ffmpegPath) {
     });
     proc.on('error', reject);
   });
+}
+
+async function extractFrames(path, startSeconds, durationSeconds, ffmpegPath) {
+  // Try GPU hardware decoding (VideoToolbox) first
+  try {
+    return await extractFramesRaw(path, startSeconds, durationSeconds, ffmpegPath, true);
+  } catch {
+    // Fallback to software decoding
+    return await extractFramesRaw(path, startSeconds, durationSeconds, ffmpegPath, false);
+  }
 }
 
 // --- dHash ------------------------------------------------------------------
@@ -299,6 +383,35 @@ function matchOutro(mainHashes, refHashesPerFile, outroOffset) {
   };
 }
 
+// --- cached frame hash extraction --------------------------------------------
+async function getFrameHashesCached(file, startSeconds, durationSeconds, ffmpegPath) {
+  const key = regionKey(startSeconds, durationSeconds);
+  const cache = loadCache(file);
+
+  // Cache hit: return stored hashes
+  if (cache && cache.regions && cache.regions[key]) {
+    return cache.regions[key];
+  }
+
+  // Cache miss: extract frames, compute hashes, merge into cache
+  const regions = (cache && cache.regions) ? { ...cache.regions } : {};
+
+  try {
+    const rawData = await extractFrames(file, startSeconds, durationSeconds, ffmpegPath);
+    const hashes = extractFrameHashes(rawData);
+    regions[key] = hashes;
+    saveCache(file, regions);
+    return hashes;
+  } catch {
+    // extraction failed, store empty array in cache to avoid repeated failures
+    if (!regions[key]) {
+      regions[key] = [];
+      saveCache(file, regions);
+    }
+    throw new Error(`Failed to extract frames from ${file} at ${startSeconds}s`);
+  }
+}
+
 // --- main -------------------------------------------------------------------
 async function main() {
   const args = process.argv.slice(2);
@@ -364,15 +477,14 @@ async function main() {
       }
     }
 
-    // --- launch ALL frame extractions in parallel ---
-    // Each entry: { key, file, start, isOutro }
+    // --- launch ALL frame extractions in parallel (with disk cache) ---
     const extractionTasks = [];
 
     // Intro: all files from start
     for (const file of allFiles) {
       extractionTasks.push({
         key: 'intro:' + file,
-        promise: extractFrames(file, 0, ANALYZE_SECONDS, opts.ffmpeg),
+        promise: getFrameHashesCached(file, 0, ANALYZE_SECONDS, opts.ffmpeg),
       });
     }
 
@@ -380,23 +492,28 @@ async function main() {
     if (mainDuration && outroOffset > 0) {
       extractionTasks.push({
         key: 'outro:' + opts.main,
-        promise: extractFrames(opts.main, outroOffset, ANALYZE_SECONDS, opts.ffmpeg),
+        promise: getFrameHashesCached(opts.main, outroOffset, ANALYZE_SECONDS, opts.ffmpeg),
       });
       for (const ref of opts.refs) {
         const refOff = refOutroOffsets.get(ref) || 0;
-        extractionTasks.push({
-          key: 'outro:' + ref,
-          promise: refOff > 0
-            ? extractFrames(ref, refOff, ANALYZE_SECONDS, opts.ffmpeg)
-            : Promise.resolve(Buffer.alloc(0)),
-        });
+        if (refOff > 0) {
+          extractionTasks.push({
+            key: 'outro:' + ref,
+            promise: getFrameHashesCached(ref, refOff, ANALYZE_SECONDS, opts.ffmpeg),
+          });
+        } else {
+          extractionTasks.push({
+            key: 'outro:' + ref,
+            promise: Promise.resolve([]),
+          });
+        }
       }
     }
 
     // Run all extractions concurrently
-    const taskKeys = extractionTasks.map((t) => t.key);
     const taskPromises = extractionTasks.map((t) =>
-      t.promise.then((buf) => ({ key: t.key, hashes: extractFrameHashes(buf) }))
+      t.promise
+        .then((hashes) => ({ key: t.key, hashes }))
         .catch(() => ({ key: t.key, hashes: [] }))
     );
     const results = await Promise.all(taskPromises);
