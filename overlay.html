@@ -1,0 +1,342 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+
+      body {
+        --overlay-edge-padding: 52px;
+
+        display: flex;
+        align-items: flex-end;
+        justify-content: flex-end;
+        box-sizing: border-box;
+        padding: var(--overlay-edge-padding);
+      }
+
+      /* ── wrapper ── */
+      #box-wrap {
+        position: relative;
+        visibility: hidden;
+        pointer-events: none;
+        transition: visibility 0s linear 520ms;
+      }
+
+      #box-wrap.visible {
+        visibility: visible;
+        pointer-events: auto;
+        transition-delay: 0s;
+      }
+
+      #box-wrap.status {
+        pointer-events: none;
+      }
+
+      /* ── main button ── */
+      #box {
+        --auto-dismiss-ms: 15000ms;
+        --button-base-background: rgba(238, 238, 234, 0.82);
+        --button-progress-background: rgba(255, 255, 255, 0.96);
+        --button-text-color: rgba(0, 0, 0, 0.86);
+        --button-inset-outline: rgba(255, 255, 255, 0.72);
+        --button-inset-shadow: rgba(0, 0, 0, 0.06);
+
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        padding: 22px 42px;
+        border-radius: 12px;
+
+        color: var(--button-text-color);
+        background: var(--button-base-background);
+        -webkit-backdrop-filter: blur(32px) saturate(145%) contrast(0.96);
+        backdrop-filter: blur(32px) saturate(145%) contrast(0.96);
+        cursor: pointer;
+        -webkit-user-select: none;
+        user-select: none;
+
+        transform: translateX(calc(100% + var(--overlay-edge-padding))) scale(0.97);
+        transition:
+          filter 140ms ease,
+          transform 520ms cubic-bezier(0.4, 0, 0.2, 1);
+
+        box-shadow:
+          0 28px 58px rgba(0, 0, 0, 0.36),
+          0 10px 24px rgba(0, 0, 0, 0.2),
+          inset 0 0 0 1px var(--button-inset-outline),
+          inset 0 -1px 0 var(--button-inset-shadow);
+      }
+
+      body.button-style-grey #box {
+        --button-base-background: rgba(66, 66, 64, 0.9);
+        --button-progress-background: rgba(88, 88, 85, 0.92);
+        --button-text-color: rgba(255, 255, 255, 0.94);
+        --button-inset-outline: rgba(255, 255, 255, 0.22);
+        --button-inset-shadow: rgba(0, 0, 0, 0.2);
+      }
+
+      /* Auto-dismiss progress layer */
+      #box::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: var(--button-progress-background);
+        opacity: 0;
+        clip-path: inset(0 0 0 0);
+        pointer-events: none;
+      }
+
+      /* ── visible state ── */
+      #box-wrap.visible #box {
+        transform: translateX(0) scale(1);
+        transition:
+          filter 140ms ease,
+          transform 1000ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      #box-wrap.visible #box::before {
+        opacity: 1;
+        clip-path: var(--auto-dismiss-clip-path, inset(0 0 0 0));
+        animation: var(--auto-dismiss-animation-name, auto-dismiss-progress) var(--auto-dismiss-ms)
+          linear forwards;
+      }
+
+      #box-wrap.progress-frozen #box::before {
+        opacity: 1;
+        clip-path: var(--auto-dismiss-clip-path, inset(0 0 0 0));
+        animation: none;
+      }
+
+      #box-wrap.status #box {
+        background: var(--button-progress-background);
+        cursor: default;
+      }
+
+      #box-wrap.status #box::before {
+        opacity: 0;
+        animation: none;
+      }
+
+      #box-wrap.auto-dismiss-paused #box::before {
+        animation-play-state: paused;
+      }
+
+      #box-wrap.visible:not(.status) #box:hover {
+        filter: brightness(1.03) contrast(1.02);
+      }
+
+      /* ── title ── */
+      #title {
+        position: relative;
+        z-index: 1;
+        color: inherit;
+        font-size: 22px;
+        font-weight: 550;
+        line-height: 1.2;
+        letter-spacing: -0.01em;
+        pointer-events: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      /* ── keyframes ── */
+
+      /* Auto-dismiss countdown */
+      @keyframes auto-dismiss-progress {
+        from {
+          clip-path: inset(0 0 0 0);
+        }
+        to {
+          clip-path: inset(0 100% 0 0);
+        }
+      }
+
+      @keyframes auto-dismiss-progress-reset {
+        from {
+          clip-path: inset(0 0 0 0);
+        }
+        to {
+          clip-path: inset(0 100% 0 0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="box-wrap">
+      <div
+        id="box"
+        aria-live="polite"
+        data-clickable
+        role="button"
+        tabindex="0"
+        aria-label="Skip Intro"
+      >
+        <div id="title">Skip Intro</div>
+      </div>
+    </div>
+
+    <script>
+      var boxWrap = document.getElementById('box-wrap');
+      var box = document.getElementById('box');
+      var title = document.getElementById('title');
+      var autoDismissPlaybackPaused = false;
+      var autoDismissAnimationReset = false;
+      var currentSectionId = null;
+      var currentMode = 'prompt';
+      var clickable = true;
+
+      function setVisible(visible) {
+        if (visible) {
+          boxWrap.classList.remove('progress-frozen');
+          box.style.removeProperty('--auto-dismiss-clip-path');
+        }
+
+        boxWrap.classList.toggle('visible', !!visible);
+        updateAutoDismissPaused();
+      }
+
+      function setAutoDismissDuration(milliseconds) {
+        if (typeof milliseconds !== 'number' || !isFinite(milliseconds) || milliseconds <= 0) {
+          return;
+        }
+
+        box.style.setProperty('--auto-dismiss-ms', milliseconds + 'ms');
+      }
+
+      function setSkipLabel(label) {
+        var resolvedLabel = typeof label === 'string' && label ? label : 'Skip Intro';
+        title.textContent = resolvedLabel;
+        box.setAttribute('aria-label', resolvedLabel);
+      }
+
+      function setButtonStyle(style) {
+        document.body.classList.toggle('button-style-grey', style === 'grey');
+      }
+
+      function setMode(mode) {
+        currentMode = mode === 'status' ? 'status' : 'prompt';
+        clickable = currentMode === 'prompt';
+        boxWrap.classList.toggle('status', currentMode === 'status');
+        box.setAttribute('role', clickable ? 'button' : 'status');
+        if (clickable) {
+          box.setAttribute('data-clickable', '');
+          box.setAttribute('tabindex', '0');
+        } else {
+          box.removeAttribute('data-clickable');
+          box.removeAttribute('tabindex');
+        }
+      }
+
+      function restartAutoDismissProgress() {
+        autoDismissAnimationReset = !autoDismissAnimationReset;
+        box.style.setProperty(
+          '--auto-dismiss-animation-name',
+          autoDismissAnimationReset ? 'auto-dismiss-progress-reset' : 'auto-dismiss-progress',
+        );
+      }
+
+      function postMessage(name, payload) {
+        if (typeof iina !== 'undefined') {
+          iina.postMessage(name, payload);
+        }
+      }
+
+      function freezeAutoDismissProgress() {
+        var style = window.getComputedStyle(box, '::before');
+        var clipPath = style && style.getPropertyValue('clip-path');
+        if (!clipPath || clipPath === 'none') return;
+
+        box.style.setProperty('--auto-dismiss-clip-path', clipPath);
+        boxWrap.classList.add('progress-frozen');
+      }
+
+      function updateAutoDismissPaused() {
+        var visible = boxWrap.classList.contains('visible');
+        var interactionPaused = visible && box.matches(':hover, :focus');
+
+        boxWrap.classList.toggle(
+          'auto-dismiss-paused',
+          currentMode === 'prompt' && visible && (interactionPaused || autoDismissPlaybackPaused),
+        );
+      }
+
+      window.addEventListener('error', function (event) {
+        postMessage('error', event.message);
+      });
+
+      box.addEventListener('click', function () {
+        if (!clickable) return;
+        freezeAutoDismissProgress();
+        postMessage('skip');
+      });
+
+      box.addEventListener('keydown', function (event) {
+        if (!clickable) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          freezeAutoDismissProgress();
+          postMessage('skip');
+        }
+      });
+
+      box.addEventListener('animationend', function (event) {
+        if (currentMode !== 'prompt') return;
+        if (
+          event.animationName === 'auto-dismiss-progress' ||
+          event.animationName === 'auto-dismiss-progress-reset'
+        ) {
+          postMessage('autoDismiss');
+        }
+      });
+
+      box.addEventListener('mouseenter', updateAutoDismissPaused);
+      box.addEventListener('mouseleave', updateAutoDismissPaused);
+      box.addEventListener('focus', updateAutoDismissPaused);
+      box.addEventListener('blur', updateAutoDismissPaused);
+
+      if (typeof iina !== 'undefined') {
+        iina.onMessage('playbackPaused', function (paused) {
+          autoDismissPlaybackPaused = !!paused;
+          updateAutoDismissPaused();
+        });
+
+        iina.onMessage('state', function (state) {
+          if (!state || !state.visible) {
+            currentSectionId = null;
+            setVisible(false);
+            return;
+          }
+
+          var sectionChanged =
+            currentSectionId !== null &&
+            state.sectionId !== null &&
+            state.sectionId !== currentSectionId;
+
+          setMode(state.mode);
+          setAutoDismissDuration(state.autoDismissMs);
+          autoDismissPlaybackPaused = !!state.playbackPaused;
+          setSkipLabel(state.label || state.skipLabel);
+          setButtonStyle(state.buttonStyle);
+          if (sectionChanged) {
+            restartAutoDismissProgress();
+          }
+          currentSectionId = state.sectionId;
+          setVisible(true);
+        });
+      }
+    </script>
+  </body>
+</html>

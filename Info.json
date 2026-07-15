@@ -1,0 +1,34 @@
+{
+  "name": "Skip Intro",
+  "identifier": "com.pparanoiidd.skipintro",
+  "version": "1.0.0",
+  "ghRepo": "pparanoiidd/iina-skip-intro",
+  "ghVersion": 1,
+  "author": {
+    "name": "pparanoiidd"
+  },
+  "description": "Skip-intro overlay for IINA.",
+  "entry": "main.js",
+  "preferencesPage": "preferences.html",
+  "preferenceDefaults": {
+    "detect_chapter_titles": true,
+    "detect_intros": true,
+    "detect_audio_matching": false,
+    "audio_match_parse_episode_numbers": true,
+    "detect_chapter_timing": false,
+    "detect_recaps": false,
+    "detect_credits": true,
+    "auto_skip_title_intros": false,
+    "auto_skip_title_recaps": false,
+    "auto_skip_title_credits": false,
+    "auto_skip_audio_matching": false,
+    "auto_skip_start_delay_seconds": 0,
+    "show_auto_skip_status": true,
+    "auto_skip_first_episode_of_season": true,
+    "popup_auto_dismiss_seconds": 15,
+    "skip_end_buffer_seconds": 1,
+    "skip_key_binding": "",
+    "popup_button_grey": false
+  },
+  "permissions": ["video-overlay", "file-system"]
+}
