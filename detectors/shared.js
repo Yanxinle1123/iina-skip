@@ -5,6 +5,7 @@ const SECTION_KIND_SECTION = 'section';
 const SECTION_SOURCE_TITLE = 'title';
 const SECTION_SOURCE_TIMING = 'timing';
 const SECTION_SOURCE_AUDIO_FINGERPRINT = 'audio-fingerprint';
+const SECTION_SOURCE_VIDEO_FINGERPRINT = 'video-fingerprint';
 const SECTION_GROUP_MAX_GAP = 1;
 const INTRO_MAX_START_RATIO = 0.25;
 const VIDEO_FILE_EXTENSIONS = Object.freeze([
@@ -436,6 +437,7 @@ module.exports = {
   SECTION_SOURCE_TITLE: SECTION_SOURCE_TITLE,
   SECTION_SOURCE_TIMING: SECTION_SOURCE_TIMING,
   SECTION_SOURCE_AUDIO_FINGERPRINT: SECTION_SOURCE_AUDIO_FINGERPRINT,
+  SECTION_SOURCE_VIDEO_FINGERPRINT: SECTION_SOURCE_VIDEO_FINGERPRINT,
   classifyChapterTitle: classifyChapterTitle,
   getFilename: getFilename,
   getFilenameStem: getFilenameStem,

@@ -2803,12 +2803,13 @@ async function findIntroMatch({ mainFile, refFiles, options = {}, runCommand, du
       // 不再套用片头专属的“起始溢色/前置静音”裁剪逻辑，因为那些假设音频位于片段开头。
       const rawOutro = formatFrameRange(outroShared.mainStart, outroShared.mainEnd);
       const offset = outroStartSeconds;
+      // 必须与片头/formatOutput/isValidAudioMatchSection 保持一致，使用蛇形字段名。
       outro = {
         mainStart: outroShared.mainStart,
         mainEnd: outroShared.mainEnd,
-        startSeconds: round4(rawOutro.start_seconds + offset),
-        endSeconds: round4(rawOutro.end_seconds + offset),
-        durationSeconds: rawOutro.duration_seconds
+        start_seconds: round4(rawOutro.start_seconds + offset),
+        end_seconds: round4(rawOutro.end_seconds + offset),
+        duration_seconds: rawOutro.duration_seconds
       };
     }
   }

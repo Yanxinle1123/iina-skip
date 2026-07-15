@@ -14,6 +14,7 @@ const {
   SECTION_KIND_RECAP,
   SECTION_KIND_SECTION,
   SECTION_SOURCE_AUDIO_FINGERPRINT,
+  SECTION_SOURCE_VIDEO_FINGERPRINT,
   SECTION_SOURCE_TITLE,
   getLocalFilePath,
   getChapterStart,
@@ -23,6 +24,7 @@ const {
 const { detectSectionsFromChapterTitles } = require('./detectors/chapter-title.js');
 const { detectSectionsFromChapterTiming } = require('./detectors/chapter-timing.js');
 const { createAudioMatchDetector } = require('./detectors/audio-match.js');
+const { createVideoMatchDetector } = require('./detectors/video-match.js');
 
 const INTRO_PROMPT_LEAD_IN = 1;
 const AUTO_SKIP_START_DELAY_SECONDS = 0;
@@ -60,6 +62,10 @@ const PREF_POPUP_AUTO_DISMISS_SECONDS = 'popup_auto_dismiss_seconds';
 const PREF_SKIP_END_BUFFER_SECONDS = 'skip_end_buffer_seconds';
 const PREF_SKIP_KEY_BINDING = 'skip_key_binding';
 const PREF_POPUP_BUTTON_GREY = 'popup_button_grey';
+const PREF_DETECT_VIDEO_MATCHING = 'detect_video_matching';
+const PREF_VIDEO_MATCH_PARSE_EPISODE_NUMBERS = 'video_match_parse_episode_numbers';
+const PREF_AUTO_SKIP_VIDEO_MATCHING = 'auto_skip_video_matching';
+const PREF_AUTO_SKIP_VIDEO_MATCHING_CREDITS = 'auto_skip_video_matching_credits';
 
 let overlayReady = false;
 let overlayVisible = false;
@@ -96,6 +102,16 @@ const audioMatchDetector = createAudioMatchDetector({
 const detectSectionFromAudioMatch = audioMatchDetector.detectSectionFromAudioMatch;
 const getAudioMatchDependencyStatus = audioMatchDetector.getAudioMatchDependencyStatus;
 
+const videoMatchDetector = createVideoMatchDetector({
+  mpv: mpv,
+  file: file,
+  utils: iinaUtils,
+  log: log,
+  delay: delay,
+});
+const detectSectionFromVideoMatch = videoMatchDetector.detectSectionFromVideoMatch;
+const getVideoMatchDependencyStatus = videoMatchDetector.getVideoMatchDependencyStatus;
+
 function getPosition() {
   const position = mpv.getNumber('time-pos');
   return typeof position === 'number' && isFinite(position) ? position : null;
@@ -129,7 +145,9 @@ function getDetectionOptionsForDuration(options, duration) {
   return {
     detectChapterTitles: options.detectChapterTitles,
     detectAudioMatching: false,
+    detectVideoMatching: false,
     parseAudioMatchEpisodeNumbers: options.parseAudioMatchEpisodeNumbers,
+    parseVideoMatchEpisodeNumbers: options.parseVideoMatchEpisodeNumbers,
     detectChapterTiming: false,
     detectIntros: false,
     detectRecaps: false,
@@ -206,6 +224,22 @@ function isChapterTimingDetectionEnabled() {
   return getBooleanPreference(PREF_DETECT_CHAPTER_TIMING, false);
 }
 
+function isVideoMatchingEnabled() {
+  return getBooleanPreference(PREF_DETECT_VIDEO_MATCHING, false);
+}
+
+function isVideoMatchEpisodeParsingEnabled() {
+  return getBooleanPreference(PREF_VIDEO_MATCH_PARSE_EPISODE_NUMBERS, true);
+}
+
+function isVideoMatchingAutoSkipEnabled() {
+  return getBooleanPreference(PREF_AUTO_SKIP_VIDEO_MATCHING, false);
+}
+
+function isVideoMatchingCreditsAutoSkipEnabled() {
+  return getBooleanPreference(PREF_AUTO_SKIP_VIDEO_MATCHING_CREDITS, false);
+}
+
 function isTitleIntroAutoSkipEnabled() {
   return getBooleanPreference(PREF_AUTO_SKIP_TITLE_INTROS, false);
 }
@@ -231,6 +265,8 @@ function getDetectionOptionsFromPreferences() {
     detectChapterTitles: isChapterTitleDetectionEnabled(),
     detectAudioMatching: isAudioMatchingEnabled(),
     parseAudioMatchEpisodeNumbers: isAudioMatchEpisodeParsingEnabled(),
+    detectVideoMatching: isVideoMatchingEnabled(),
+    parseVideoMatchEpisodeNumbers: isVideoMatchEpisodeParsingEnabled(),
     detectChapterTiming: isChapterTimingDetectionEnabled(),
     detectIntros: isIntroDetectionEnabled(),
     detectRecaps: isRecapDetectionEnabled(),
@@ -310,6 +346,7 @@ function hasEnabledDetectionMethod(options) {
     ((options.detectChapterTitles &&
       (options.detectIntros || options.detectRecaps || options.detectCredits)) ||
       options.detectAudioMatching ||
+      options.detectVideoMatching ||
       options.detectChapterTiming)
   );
 }
@@ -388,6 +425,8 @@ function getAutoSkipSettingsFromPreferences() {
     titleCredits: isTitleCreditsAutoSkipEnabled(),
     audioMatching: isAudioMatchingAutoSkipEnabled(),
     audioMatchingCredits: isAudioMatchingCreditsAutoSkipEnabled(),
+    videoMatching: isVideoMatchingAutoSkipEnabled(),
+    videoMatchingCredits: isVideoMatchingCreditsAutoSkipEnabled(),
     startDelaySeconds: getAutoSkipStartDelaySeconds(),
     showStatus: shouldShowAutoSkipStatus(),
     autoSkipFirstEpisodeOfSeason: shouldAutoSkipFirstEpisodeOfSeason(),
@@ -412,6 +451,14 @@ function resolveAutoSkipForSection(sectionGroup, settings) {
         if (settings.audioMatchingCredits) return true;
       } else {
         if (settings.audioMatching) return true;
+      }
+      continue;
+    }
+    if (section.source === SECTION_SOURCE_VIDEO_FINGERPRINT) {
+      if (section.kind === SECTION_KIND_CREDITS) {
+        if (settings.videoMatchingCredits) return true;
+      } else {
+        if (settings.videoMatching) return true;
       }
       continue;
     }
@@ -606,12 +653,44 @@ async function detectFromAudioMatch(context, options, runId) {
       return [];
     }
 
-    return audioSectionGroups.map(function (audioSectionGroup) {
-      return snapAudioSectionGroupToChapters(audioSectionGroup, context.chapters);
+  return audioSectionGroups.map(function (audioSectionGroup) {
+    return snapAudioSectionGroupToChapters(audioSectionGroup, context.chapters);
+  });
+} catch (error) {
+    if (runId !== detectionRunId) return null;
+    log('音频片头检测失败：' + error);
+    return [];
+  }
+}
+
+async function detectFromVideoMatch(context, options, runId) {
+  if (!options.detectVideoMatching) return [];
+
+  try {
+    const dependencyStatus = await getVideoMatchDependencyStatus();
+    if (runId !== detectionRunId) return null;
+
+    if (!dependencyStatus.ok) {
+      showAudioDependencyWarning(dependencyStatus.missing);
+      return [];
+    }
+
+    const videoOptions = Object.assign({}, options, {
+      duration: context && context.duration,
+    });
+    const videoSectionGroups = await detectSectionFromVideoMatch(videoOptions);
+    if (runId !== detectionRunId) return null;
+
+    if (!Array.isArray(videoSectionGroups) || !videoSectionGroups.length) {
+      return [];
+    }
+
+    return videoSectionGroups.map(function (videoSectionGroup) {
+      return snapAudioSectionGroupToChapters(videoSectionGroup, context.chapters);
     });
   } catch (error) {
     if (runId !== detectionRunId) return null;
-    log('音频片头检测失败：' + error);
+    log('视频指纹检测失败：' + error);
     return [];
   }
 }
@@ -717,6 +796,13 @@ async function detectCurrentSections() {
     let audioSections = await detectFromAudioMatch(context, options, runId);
     if (audioSections === null) return;
     sections = mergeSectionGroups(sections, audioSections);
+  }
+
+  // Run video fingerprint alongside other methods to complement detection.
+  if (options.detectVideoMatching) {
+    let videoSections = await detectFromVideoMatch(context, options, runId);
+    if (videoSections === null) return;
+    sections = mergeSectionGroups(sections, videoSections);
   }
 
   if (!sections.length) {
