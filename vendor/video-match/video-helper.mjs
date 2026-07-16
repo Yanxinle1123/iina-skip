@@ -136,34 +136,9 @@ function ffprobeDuration(path, ffmpegPath) {
   });
 }
 
-// Detect VideoToolbox support once (cached)
-let hwaccelSupported = null;
-
-function checkHwaccelSupport(ffmpegPath) {
-  return new Promise((resolve) => {
-    if (hwaccelSupported !== null) return resolve(hwaccelSupported);
-    const proc = spawn(ffmpegPath, ['-hide_banner', '-hwaccels'], { stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    proc.stdout.on('data', (d) => { stdout += d.toString(); });
-    proc.stderr.on('data', () => {});
-    proc.on('close', () => {
-      hwaccelSupported = /videotoolbox/i.test(stdout);
-      resolve(hwaccelSupported);
-    });
-    proc.on('error', () => {
-      hwaccelSupported = false;
-      resolve(false);
-    });
-  });
-}
-
-function extractFramesRaw(path, startSeconds, durationSeconds, ffmpegPath, useHWAccel) {
+function extractFrames(path, startSeconds, durationSeconds, ffmpegPath) {
   return new Promise((resolve, reject) => {
-    const args = [];
-    if (useHWAccel) {
-      args.push('-hwaccel', 'videotoolbox');
-    }
-    args.push(
+    const args = [
       '-ss', String(startSeconds),
       '-i', path,
       '-t', String(durationSeconds),
@@ -171,7 +146,7 @@ function extractFramesRaw(path, startSeconds, durationSeconds, ffmpegPath, useHW
       '-an',
       '-f', 'rawvideo',
       'pipe:1',
-    );
+    ];
 
     const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -190,21 +165,6 @@ function extractFramesRaw(path, startSeconds, durationSeconds, ffmpegPath, useHW
     });
     proc.on('error', reject);
   });
-}
-
-async function extractFrames(path, startSeconds, durationSeconds, ffmpegPath) {
-  // Only use GPU if VideoToolbox is actually supported
-  const canUseHW = await checkHwaccelSupport(ffmpegPath);
-  if (canUseHW) {
-    try {
-      return await extractFramesRaw(path, startSeconds, durationSeconds, ffmpegPath, true);
-    } catch {
-      // GPU failed for this specific file, fall back to software
-      return await extractFramesRaw(path, startSeconds, durationSeconds, ffmpegPath, false);
-    }
-  }
-  // Software decoding only
-  return await extractFramesRaw(path, startSeconds, durationSeconds, ffmpegPath, false);
 }
 
 // --- dHash ------------------------------------------------------------------
@@ -410,31 +370,6 @@ function matchOutro(mainHashes, refHashesPerFile, outroOffset) {
 }
 
 // --- cached frame hash extraction --------------------------------------------
-const MAX_CONCURRENT_EXTRACTIONS = 4;
-let activeExtractions = 0;
-const extractionQueue = [];
-
-function runWithConcurrencyLimit(task) {
-  return new Promise((resolve, reject) => {
-    const attempt = () => {
-      if (activeExtractions >= MAX_CONCURRENT_EXTRACTIONS) {
-        extractionQueue.push(attempt);
-        return;
-      }
-      activeExtractions++;
-      task()
-        .then(resolve)
-        .catch(reject)
-        .finally(() => {
-          activeExtractions--;
-          const next = extractionQueue.shift();
-          if (next) next();
-        });
-    };
-    attempt();
-  });
-}
-
 async function getFrameHashesCached(file, startSeconds, durationSeconds, ffmpegPath) {
   const key = regionKey(startSeconds, durationSeconds);
   const cache = loadCache(file);
@@ -448,9 +383,8 @@ async function getFrameHashesCached(file, startSeconds, durationSeconds, ffmpegP
   const regions = (cache && cache.regions) ? { ...cache.regions } : {};
 
   try {
-    const hashes = await runWithConcurrencyLimit(() =>
-      extractFrames(file, startSeconds, durationSeconds, ffmpegPath).then(extractFrameHashes)
-    );
+    const rawData = await extractFrames(file, startSeconds, durationSeconds, ffmpegPath);
+    const hashes = extractFrameHashes(rawData);
     regions[key] = hashes;
     saveCache(file, regions);
     return hashes;

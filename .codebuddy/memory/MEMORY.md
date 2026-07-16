@@ -2,17 +2,11 @@
 
 ## 视频指纹检测性能优化
 
-### GPU 硬件解码 (VideoToolbox)
-- 在 `extractFramesRaw` 中添加了 `-hwaccel videotoolbox` 参数
-- **重要**：先调用 `checkHwaccelSupport(ffmpegPath)` 检测 ffmpeg 是否支持 videotoolbox（通过 `ffmpeg -hwaccels` 命令），结果缓存
-- 只在确认支持时才用 GPU，否则直接 CPU 软解，避免"先 GPU 失败再 CPU 重试"的双次解码
-- `extractFrames` 逻辑：检测支持 → 尝试 GPU → 单文件失败时回退 CPU
-- M1 芯片上解码 1080p 视频可从 ~30fps 提升至 >200fps
-- 注意：对于 2fps/9×8 灰度图的低带宽场景，GPU 内存拷贝开销可能抵消解码加速
-
-### 并发限制
-- `MAX_CONCURRENT_EXTRACTIONS = 4`，避免 10 路 ffmpeg 同时跑互相抢 CPU
-- 通过 `runWithConcurrencyLimit()` 队列实现
+### GPU 硬件解码 (VideoToolbox) — 已移除
+- 曾经尝试用 `-hwaccel videotoolbox` 加速解码
+- **结论：在这个场景下 GPU 反而更慢**，已完全移除
+- 原因：只需 2fps/9×8 灰度图，GPU→CPU 内存拷贝开销 + 初始化开销 > 解码加速收益
+- GPU 硬解适合高帧率/高分辨率播放场景，不适合低带宽帧提取场景
 
 ### 磁盘缓存帧哈希
 - 缓存目录：`/tmp/iina-skip-cache/`
