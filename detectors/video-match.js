@@ -499,6 +499,29 @@ function createVideoMatchDetector(dependencies) {
     return isValidVideoMatchOutput(output) ? buildVideoMatchSectionGroup(output) : null;
   }
 
+  // --- clear disk + in-memory cache ---
+  async function clearVideoMatchCache() {
+    let diskCleared = false;
+    try {
+      const tmpResult = await iinaUtils.exec('/usr/bin/printenv', ['TMPDIR']);
+      const tmpDir = tmpResult.status === 0 && tmpResult.stdout ? tmpResult.stdout.trim() : '/tmp';
+      const cacheDir = tmpDir.replace(/\/+$/, '') + '/iina-skip-cache';
+      const rmResult = await iinaUtils.exec('/bin/rm', ['-rf', cacheDir]);
+      diskCleared = rmResult.status === 0;
+      if (diskCleared) {
+        logVideo('已清除磁盘缓存目录：' + cacheDir);
+      } else {
+        logVideo('清除磁盘缓存失败，rm 退出码：' + rmResult.status);
+      }
+    } catch (error) {
+      logVideo('清除磁盘缓存异常：' + error);
+    }
+    // Clear in-memory result cache
+    resultCache.clear();
+    logVideo('已清除内存结果缓存（' + resultCache.size + ' 项）');
+    return diskCleared;
+  }
+
   // --- main detection (with cache) ---
   async function detectSectionFromVideoMatch(options) {
     logVideo('读取播放列表前等待 ' + VIDEO_MATCH_PLAYLIST_DELAY_MS + ' 毫秒');
@@ -547,6 +570,7 @@ function createVideoMatchDetector(dependencies) {
     getVideoMatchDependencyStatus: getVideoMatchDependencyStatus,
     precomputeVideoMatch: precomputeVideoMatch,
     getAdjacentPlaylistFiles: getAdjacentPlaylistFiles,
+    clearVideoMatchCache: clearVideoMatchCache,
   };
 }
 

@@ -685,6 +685,21 @@
         </label>
       </div>
 
+      <div class="section-divider" aria-hidden="true"></div>
+
+      <div class="preference-heading">缓存管理</div>
+      <div class="global-options">
+        <div class="global-option global-option--stacked">
+          <button type="button" id="clear-video-cache">清除识别缓存</button>
+          <span class="detection-option__text">
+            <span class="detection-option__caption small secondary">
+              清除视频指纹检测的磁盘缓存，下次检测将重新解码计算。GPU 加速和缓存优化启用后，首次检测约 5-8 秒，之后从缓存读取近乎零等待。
+            </span>
+            <span id="clear-cache-status" class="small secondary" style="min-height: 16px;"></span>
+          </span>
+        </div>
+      </div>
+
       <div class="preference-actions">
         <button type="button" id="reset-preferences">恢复默认设置</button>
       </div>
@@ -714,6 +729,7 @@
         skip_end_buffer_seconds: 1,
         skip_key_binding: '',
         popup_button_grey: false,
+        clear_video_cache_trigger: '',
       };
 
       function setPreference(key, value) {
@@ -914,6 +930,21 @@
 
           setPreferenceInputValue(input, value, { persist: true, dispatch: true });
         });
+      });
+
+      document.getElementById('clear-video-cache').addEventListener('click', function () {
+        var status = document.getElementById('clear-cache-status');
+        var button = document.getElementById('clear-video-cache');
+        button.disabled = true;
+        status.textContent = '正在清除...';
+        setPreference('clear_video_cache_trigger', String(Date.now()));
+        setTimeout(function () {
+          status.textContent = '已请求清除，请查看 IINA 日志确认';
+        }, 1500);
+        setTimeout(function () {
+          status.textContent = '';
+          button.disabled = false;
+        }, 4500);
       });
     </script>
   </body>

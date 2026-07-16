@@ -113,6 +113,7 @@ const detectSectionFromVideoMatch = videoMatchDetector.detectSectionFromVideoMat
 const getVideoMatchDependencyStatus = videoMatchDetector.getVideoMatchDependencyStatus;
 const precomputeVideoMatch = videoMatchDetector.precomputeVideoMatch;
 const getAdjacentPlaylistFiles = videoMatchDetector.getAdjacentPlaylistFiles;
+const clearVideoMatchCache = videoMatchDetector.clearVideoMatchCache;
 
 function getPosition() {
   const position = mpv.getNumber('time-pos');
@@ -1148,6 +1149,29 @@ event.on('mpv.pause.changed', function () {
     overlay.postMessage('playbackPaused', isPlaybackPaused());
   }
 });
+
+// --- cache clear trigger polling ---
+const PREF_CLEAR_VIDEO_CACHE_TRIGGER = 'clear_video_cache_trigger';
+const CACHE_CLEAR_POLL_INTERVAL_MS = 2000;
+let lastCacheClearTrigger = '';
+
+function checkCacheClearTrigger() {
+  const trigger = getStringPreference(PREF_CLEAR_VIDEO_CACHE_TRIGGER, '');
+  if (trigger && trigger !== lastCacheClearTrigger) {
+    lastCacheClearTrigger = trigger;
+    log('收到清除识别缓存请求');
+    clearVideoMatchCache()
+      .then(function (cleared) {
+        log(cleared ? '识别缓存已清除，下次检测将重新计算' : '识别缓存清除失败');
+      })
+      .catch(function (error) {
+        log('识别缓存清除异常：' + error);
+      });
+  }
+}
+
+lastCacheClearTrigger = getStringPreference(PREF_CLEAR_VIDEO_CACHE_TRIGGER, '');
+setInterval(checkCacheClearTrigger, CACHE_CLEAR_POLL_INTERVAL_MS);
 
 // Attempt init immediately in case window is already loaded
 initializeOverlay();
