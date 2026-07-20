@@ -82,6 +82,10 @@ let detectionRunId = 0;
 let shownAudioDependencyWarningKey = null;
 let registeredSkipKeyBinding = null;
 let fileLoaded = false;
+let pendingSkipRetryTimer = null;
+let pendingSkipRetryCount = 0;
+const MAX_SKIP_RETRIES = 20;
+const SKIP_RETRY_INTERVAL_MS = 300;
 
 function log(message) {
   console.log(message);
@@ -123,16 +127,23 @@ function getPosition() {
 
 function isSeekable() {
   try {
-    if (typeof mpv.getBool === 'function') {
-      return mpv.getBool('seekable') === true;
-    }
+    // mpv's `seekable` is a number property (1 = seekable, 0 = not).
+    // Treat any unknown/undefined/error value as "seekable" so we never
+    // permanently disable auto-skip just because the property wasn't ready.
     if (typeof mpv.getNumber === 'function') {
-      return mpv.getNumber('seekable') === 1;
+      const value = mpv.getNumber('seekable');
+      if (value === 1) return true;
+      if (value === 0) return false;
+    }
+    if (typeof mpv.getBool === 'function') {
+      const value = mpv.getBool('seekable');
+      if (value === true) return true;
+      if (value === false) return false;
     }
   } catch (error) {
-    return false;
+    return true;
   }
-  return false;
+  return true;
 }
 
 function getDuration() {
@@ -873,11 +884,28 @@ function dismissOverlay() {
   setOverlayVisible(false, null);
 }
 
+function scheduleSkipRetry(sectionGroup, reason, options) {
+  if (pendingSkipRetryTimer !== null) return;
+  if (pendingSkipRetryCount >= MAX_SKIP_RETRIES) {
+    log('自动跳过重试次数超限，放弃：' + getSectionDescription(sectionGroup));
+    return;
+  }
+  pendingSkipRetryTimer = setTimeout(function () {
+    pendingSkipRetryTimer = null;
+    if (!sectionGroup || dismissedSectionIds[sectionGroup.id]) return;
+    pendingSkipRetryCount++;
+    const skipped = skipSection(sectionGroup, reason, options);
+    if (skipped && sectionGroup.showAutoSkipStatus) {
+      showAutoSkipStatus(sectionGroup, 'complete');
+    }
+  }, SKIP_RETRY_INTERVAL_MS);
+}
+
 function skipSection(sectionGroup, reason, options) {
   if (!sectionGroup) {
     log('触发跳过时未检测到对应片段');
     dismissOverlay();
-    return;
+    return false;
   }
 
   const bufferSeconds = getSkipEndBufferSeconds();
@@ -887,9 +915,11 @@ function skipSection(sectionGroup, reason, options) {
     core.seekTo(seekTarget);
   } catch (error) {
     log('跳转命令执行失败（文件可能仍在加载）：' + error);
-    return;
+    scheduleSkipRetry(sectionGroup, reason, options);
+    return false;
   }
   dismissedSectionIds[sectionGroup.id] = true;
+  pendingSkipRetryCount = 0;
   if (
     !(options && options.keepOverlayVisible) &&
     currentOverlaySection &&
@@ -897,6 +927,7 @@ function skipSection(sectionGroup, reason, options) {
   ) {
     setOverlayVisible(false, null);
   }
+  return true;
 }
 
 function handleSkipKeyDown(data) {
@@ -1084,31 +1115,32 @@ function updateOverlay(position) {
       return;
     }
 
-    // Do NOT issue a seek until the file is fully loaded and seekable.
+    // Do NOT issue a seek until the file is fully loaded.
     // Issuing core.seekTo() while the file is still loading triggers a fatal
-    // MPV_ERROR_LOADING_FAILED (-12) that crashes IINA. We show the pending
-    // status and let the next time-pos update (or file-loaded) retry.
-    if (!fileLoaded || !isSeekable()) {
+    // MPV_ERROR_LOADING_FAILED (-12) that crashes IINA. We wait for file-loaded
+    // and let the next time-pos update retry. If the seek still fails (e.g. the
+    // file became seekable a moment later), skipSection retries on its own.
+    if (!fileLoaded) {
       if (activeAutoSkipSection.showAutoSkipStatus) {
         showAutoSkipStatus(activeAutoSkipSection, 'pending');
       }
-      log(
-        '自动跳过已就绪，但文件尚未可跳转（fileLoaded=' +
-          fileLoaded +
-          '），等待加载完成后重试',
-      );
+      log('自动跳过已就绪，但文件尚未加载完成，等待加载完成后重试');
       return;
     }
 
-    skipSection(
+    const skipped = skipSection(
       activeAutoSkipSection,
       '已触发自动跳过：' + getSectionDescription(activeAutoSkipSection),
       {
         keepOverlayVisible: activeAutoSkipSection.showAutoSkipStatus,
       },
     );
-    if (activeAutoSkipSection.showAutoSkipStatus) {
-      showAutoSkipStatus(activeAutoSkipSection, 'complete');
+    if (skipped) {
+      if (activeAutoSkipSection.showAutoSkipStatus) {
+        showAutoSkipStatus(activeAutoSkipSection, 'complete');
+      }
+    } else if (activeAutoSkipSection.showAutoSkipStatus) {
+      showAutoSkipStatus(activeAutoSkipSection, 'pending');
     }
     return;
   }
@@ -1141,6 +1173,11 @@ function updateOverlay(position) {
 function resetState() {
   detectionRunId++;
   clearAutoSkipStatusTimer();
+  if (pendingSkipRetryTimer !== null) {
+    clearTimeout(pendingSkipRetryTimer);
+    pendingSkipRetryTimer = null;
+  }
+  pendingSkipRetryCount = 0;
   dismissedSectionIds = Object.create(null);
   detectedSections = [];
   currentOverlaySection = null;

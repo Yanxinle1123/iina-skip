@@ -29,23 +29,31 @@
 - `clearVideoMatchCache()` 在 `detectors/video-match.js` 中实现：删除 `$TMPDIR/iina-skip-cache/` 目录 + 清空内存结果缓存
 - sentinel 偏好项已添加到 `Info.json` 和 `preferences.html` 的 preferenceDefaults
 
-## 重要 Bug 修复：自动跳过加载中 seek 崩溃
+## 重要 Bug 修复：自动跳过加载中 seek 崩溃 + 误拦截
 
-### 症状
-- 播放列表连播时，上一集片尾自动跳过 → 切到下一集 → 下一集还在 starting 状态
-- 插件立刻对尚未加载完的文件发出 `core.seekTo()` → mpv 返回 `-12 MPV_ERROR_LOADING_FAILED`
+### 症状（第一轮）
+- 播放列表连播：上一集片尾自动跳过 → 切到下一集 → 下一集还在 starting 状态
+- 插件立刻对未加载完的文件发出 `core.seekTo()` → mpv 返回 `-12 MPV_ERROR_LOADING_FAILED`
 - IINA 的 `chkErr` 将其视为致命错误 → **进程直接退出**
 
-### 根因
-- `updateOverlay` 在 `time-pos.changed` 触发自动跳过时，没有检查文件是否已加载/可跳转
-- `core.seekTo()` 在文件未就绪时被调用，触发致命错误
+### 症状（第二轮，修复后引入）
+- 自动跳过完全失效，但手动点击跳过按钮正常
 
-### 修复（main.js）
-1. 新增 `fileLoaded` 状态标志：`mpv.file-loaded` 置 true，`mpv.end-file` 置 false
-2. 新增 `isSeekable()`：读取 mpv `seekable` 属性（兼容 getBool/getNumber + try/catch 兜底）
-3. 自动跳过分支增加守卫：`if (!fileLoaded || !isSeekable())` → 显示 pending 状态并 return，等下次 time-pos 更新重试
-4. `skipSection` 的 `core.seekTo()` 加 try/catch 兜底，即使出错也不崩溃
+### 真正的根因
+- 第一轮的修复里新增的 `isSeekable()` 把"未知状态"也当成不可跳转：
+  `mpv.getNumber('seekable')` 在文件未就绪时返回 `undefined`，`=== 1` 为 false → 返回 false
+  → 守卫 `if (!fileLoaded || !isSeekable())` **永久拦截**自动跳过
+- 手动跳过走 `skipSection` 直接 seek，不经过该守卫，所以正常
+
+### 最终修复（main.js）
+1. `fileLoaded` 状态标志：`mpv.file-loaded` 置 true，`mpv.end-file` 置 false（防止 file-loaded 前的 seek）
+2. `isSeekable()` 改为**放行语义**：仅当 `seekable` 明确为 0/false 才拦截，undefined/异常一律视为可跳转（返回 true）
+3. 自动跳过分支守卫简化为只检查 `!fileLoaded`（加载完成前不 seek），移除会误拦截的 `isSeekable()` 守卫
+4. `skipSection` 的 `core.seekTo()` 加 try/catch，失败时不崩溃，并 `scheduleSkipRetry` 每 300ms 重试（上限 20 次）
+5. `skipSection` 返回布尔值；`updateOverlay` 据此显示 pending/complete 状态
+6. `resetState`（文件切换）清理重试定时器与计数
 
 ### 关键教训
 - **绝不能在文件未加载完成时调用 `core.seekTo()`**——IINA 对 mpv 错误是 fatal 级别的
-- 自动跳过逻辑必须等待 `file-loaded` + `seekable` 双重确认
+- 守卫逻辑必须是"放行优先"：不确定时可跳转，绝不能把未知状态当不可跳转，否则会静默禁用功能
+- seek 失败用 try/catch + 重试兜底，而不是一次性放弃
