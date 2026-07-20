@@ -28,3 +28,24 @@
 - 通信机制：preferences.html 设置 `clear_video_cache_trigger` 偏好 → main.js 每 2 秒轮询检测变化 → 调用 `clearVideoMatchCache()`
 - `clearVideoMatchCache()` 在 `detectors/video-match.js` 中实现：删除 `$TMPDIR/iina-skip-cache/` 目录 + 清空内存结果缓存
 - sentinel 偏好项已添加到 `Info.json` 和 `preferences.html` 的 preferenceDefaults
+
+## 重要 Bug 修复：自动跳过加载中 seek 崩溃
+
+### 症状
+- 播放列表连播时，上一集片尾自动跳过 → 切到下一集 → 下一集还在 starting 状态
+- 插件立刻对尚未加载完的文件发出 `core.seekTo()` → mpv 返回 `-12 MPV_ERROR_LOADING_FAILED`
+- IINA 的 `chkErr` 将其视为致命错误 → **进程直接退出**
+
+### 根因
+- `updateOverlay` 在 `time-pos.changed` 触发自动跳过时，没有检查文件是否已加载/可跳转
+- `core.seekTo()` 在文件未就绪时被调用，触发致命错误
+
+### 修复（main.js）
+1. 新增 `fileLoaded` 状态标志：`mpv.file-loaded` 置 true，`mpv.end-file` 置 false
+2. 新增 `isSeekable()`：读取 mpv `seekable` 属性（兼容 getBool/getNumber + try/catch 兜底）
+3. 自动跳过分支增加守卫：`if (!fileLoaded || !isSeekable())` → 显示 pending 状态并 return，等下次 time-pos 更新重试
+4. `skipSection` 的 `core.seekTo()` 加 try/catch 兜底，即使出错也不崩溃
+
+### 关键教训
+- **绝不能在文件未加载完成时调用 `core.seekTo()`**——IINA 对 mpv 错误是 fatal 级别的
+- 自动跳过逻辑必须等待 `file-loaded` + `seekable` 双重确认

@@ -81,6 +81,7 @@ let dismissedSectionIds = Object.create(null);
 let detectionRunId = 0;
 let shownAudioDependencyWarningKey = null;
 let registeredSkipKeyBinding = null;
+let fileLoaded = false;
 
 function log(message) {
   console.log(message);
@@ -118,6 +119,20 @@ const clearVideoMatchCache = videoMatchDetector.clearVideoMatchCache;
 function getPosition() {
   const position = mpv.getNumber('time-pos');
   return typeof position === 'number' && isFinite(position) ? position : null;
+}
+
+function isSeekable() {
+  try {
+    if (typeof mpv.getBool === 'function') {
+      return mpv.getBool('seekable') === true;
+    }
+    if (typeof mpv.getNumber === 'function') {
+      return mpv.getNumber('seekable') === 1;
+    }
+  } catch (error) {
+    return false;
+  }
+  return false;
 }
 
 function getDuration() {
@@ -868,7 +883,12 @@ function skipSection(sectionGroup, reason, options) {
   const bufferSeconds = getSkipEndBufferSeconds();
   const seekTarget = Math.max(sectionGroup.start, sectionGroup.end - bufferSeconds);
   log(reason + ' - seeking to ' + seekTarget.toFixed(2) + 's');
-  core.seekTo(seekTarget);
+  try {
+    core.seekTo(seekTarget);
+  } catch (error) {
+    log('跳转命令执行失败（文件可能仍在加载）：' + error);
+    return;
+  }
   dismissedSectionIds[sectionGroup.id] = true;
   if (
     !(options && options.keepOverlayVisible) &&
@@ -1064,6 +1084,22 @@ function updateOverlay(position) {
       return;
     }
 
+    // Do NOT issue a seek until the file is fully loaded and seekable.
+    // Issuing core.seekTo() while the file is still loading triggers a fatal
+    // MPV_ERROR_LOADING_FAILED (-12) that crashes IINA. We show the pending
+    // status and let the next time-pos update (or file-loaded) retry.
+    if (!fileLoaded || !isSeekable()) {
+      if (activeAutoSkipSection.showAutoSkipStatus) {
+        showAutoSkipStatus(activeAutoSkipSection, 'pending');
+      }
+      log(
+        '自动跳过已就绪，但文件尚未可跳转（fileLoaded=' +
+          fileLoaded +
+          '），等待加载完成后重试',
+      );
+      return;
+    }
+
     skipSection(
       activeAutoSkipSection,
       '已触发自动跳过：' + getSectionDescription(activeAutoSkipSection),
@@ -1131,12 +1167,14 @@ event.on('iina.plugin-overlay-loaded', function () {
 
 event.on('mpv.file-loaded', function () {
   log('文件已加载');
+  fileLoaded = true;
   resetState();
   detectCurrentSections();
   updateOverlay();
 });
 
 event.on('mpv.end-file', function () {
+  fileLoaded = false;
   resetState();
 });
 
