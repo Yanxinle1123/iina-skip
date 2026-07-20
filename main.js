@@ -73,6 +73,7 @@ let overlayMode = null;
 let overlayInitialized = false;
 let handlersRegistered = false;
 let detectedSections = [];
+let detectedSectionsMediaPath = null;
 let currentOverlaySection = null;
 let autoSkipStatusSectionId = null;
 let autoSkipStatusPhase = null;
@@ -759,6 +760,7 @@ function finishDetection(sections, emptyMessage, context) {
     Array.isArray(sections) ? sections : [],
     context && context.mediaPath,
   );
+  detectedSectionsMediaPath = context && context.mediaPath ? context.mediaPath : null;
 
   if (emptyMessage) {
     log(emptyMessage);
@@ -1100,6 +1102,24 @@ function updateOverlay(position) {
     return;
   }
 
+  // Invalidate stale sections after a file switch. When a credits auto-skip
+  // seeks to the very end, mpv advances to the next file which is still
+  // loading; acting on the previous file's sections there triggers a fatal
+  // MPV_ERROR_LOADING_FAILED (-12). Wait for the new file's own detection.
+  const currentMediaPath = getCurrentMediaPath();
+  if (
+    detectedSections.length &&
+    currentMediaPath &&
+    detectedSectionsMediaPath &&
+    currentMediaPath !== detectedSectionsMediaPath
+  ) {
+    if (overlayVisible) {
+      setOverlayVisible(false, null);
+    }
+    currentOverlaySection = null;
+    return;
+  }
+
   const activeAutoSkipSection = getActiveSection(position, AUTO_SKIP_STATUS_LEAD_IN_SECONDS);
   if (activeAutoSkipSection && shouldAutoSkipSection(activeAutoSkipSection)) {
     if (overlayVisible && overlayMode === 'prompt') {
@@ -1180,6 +1200,7 @@ function resetState() {
   pendingSkipRetryCount = 0;
   dismissedSectionIds = Object.create(null);
   detectedSections = [];
+  detectedSectionsMediaPath = null;
   currentOverlaySection = null;
   if (overlayReady) {
     setOverlayVisible(false, null);
